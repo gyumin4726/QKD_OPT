@@ -22,7 +22,7 @@ class QKDRLEnv:
         # 기준이 될 초기값 (ga로 찾은 최적 파라미터)
         # vaccum이 0이 아님.
         # mu, nu, vac, p_mu, p_nu, p_vac, p_X, q_X
-        initial_state = np.array([0.49998366, 0.22605707, 0.07603441, 0.19593278, 0.76712322, 0.0755698, 0.45442425, 0.14845363])
+        initial_state = np.array([0.52393288, 0.23346136, 0.07864391, 0.19227209, 0.77347351, 0.08359086, 0.45512477, 0.13564011])
         
         self.initial_state = initial_state.copy() 
         
@@ -64,7 +64,8 @@ class PolicyNet(nn.Module):
         super().__init__()
         self.fc = nn.Sequential(
             nn.Linear(state_dim, 64), nn.ReLU(),
-            nn.Linear(64, 64), nn.ReLU(),
+            nn.Linear(64, 128), nn.ReLU(),
+            nn.Linear(128, 64), nn.ReLU(),
             nn.Linear(64, action_dim)
         )
     def forward(self, x):
@@ -95,9 +96,9 @@ def train_ppo():
     optimizer_value = optim.Adam(value_net.parameters(), lr=1e-3)
 
     gamma = 0.99        # 할인 인자
-    clip_param = 0.3    # PPO 클리핑 파라미터
-    epochs = 1000          # episodes 수
-    batch_size = 256   # 각 episode 당 step 수
+    clip_param = 0.2    # PPO 클리핑 파라미터
+    epochs = 500          # episodes 수
+    batch_size = 32   # 각 episode 당 step 수
     action_scale = 0.01 # action의 스케일 조정
 
     best_reward = -np.inf 

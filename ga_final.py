@@ -34,9 +34,24 @@ if USE_GPU:
     print("GPU 모드로 실행합니다.")
     # CuPy를 기본 배열 라이브러리로 설정
     xp = cp
+    
+    # GPU 메모리 정보 출력
+    mempool = cp.get_default_memory_pool()
+    pinned_mempool = cp.get_default_pinned_memory_pool()
+    print(f"GPU 메모리 풀 크기: {mempool.used_bytes() / 1024**2:.2f} MB")
+    
+    def clear_gpu_memory():
+        """GPU 메모리 정리 함수"""
+        mempool.free_all_blocks()
+        pinned_mempool.free_all_blocks()
+        print("GPU 메모리가 정리되었습니다.")
 else:
     print("CPU 모드로 실행합니다.")
     xp = np
+    
+    def clear_gpu_memory():
+        """CPU 모드에서는 아무것도 하지 않음"""
+        pass
 
 # 상수 정의
 eta_d = 4.5 / 100                     # detection efficiency of single-photon detector (%)
@@ -56,10 +71,14 @@ L = 100                                # fiber length (0~110)
 e_0 = 0.5                              # ref 23 참고, error rate of the background, background가 랜덤한 경우 가정
 
 def normalize_p(vec):
-    """벡터를 정규화하는 함수"""
+    """벡터를 정규화하는 함수 - GPU 최적화"""
+    if USE_GPU and not hasattr(vec, 'get'):
+        vec = cp.asarray(vec)
+    
     copy_vec = vec[:].copy()
     sum_vec = xp.sum(copy_vec[3:6])
-    copy_vec[3:6] /= sum_vec
+    if sum_vec > 0:  # 0으로 나누기 방지
+        copy_vec[3:6] /= sum_vec
     return copy_vec
 
 def h(x):
@@ -67,7 +86,11 @@ def h(x):
     return -x * xp.log2(x) - (1 - x)*xp.log2(1 - x)
 
 def calc_SKR(ga_instance, solution, solution_idx):
-    """SKR(Secret Key Rate) 계산 함수"""
+    """SKR(Secret Key Rate) 계산 함수 - GPU 가속 최적화"""
+    # GPU 배열로 변환
+    if USE_GPU and not hasattr(solution, 'get'):
+        solution = cp.asarray(solution)
+    
     sol = normalize_p(solution)
     mu, nu, vac, p_mu, p_nu, p_vac, p_X, q_X = sol
 
@@ -177,6 +200,21 @@ def calc_SKR(ga_instance, solution, solution_idx):
 
     return SKR
 
+def calc_SKR_batch(solutions):
+    """배치 SKR 계산 함수 - GPU 가속"""
+    if USE_GPU:
+        solutions = cp.asarray(solutions)
+    
+    results = []
+    for solution in solutions:
+        try:
+            skr = calc_SKR(None, solution, 0)
+            results.append(skr)
+        except:
+            results.append(-10)  # 오류시 낮은 적합도 반환
+    
+    return xp.array(results)
+
 def define_ga(co_type, mu_type, sel_type, 
               gen = 100,
               num_parents_mating = 60, sol_per_pop = 200, keep_parents = 50, keep_elitism = 10, K_tournament = 8, crossover_probability = 0.8, mutation_probability = 0.02, mutation_percent_genes = "default",
@@ -244,7 +282,7 @@ def define_ga(co_type, mu_type, sel_type,
                     allow_duplicate_genes = False,                                       # True인 경우, solution/염색체에 중복된 유전자 값이 있을 수 있음
 
                     stop_criteria = None,
-                    parallel_processing = None,                                          # None인 경우 병렬 처리 허용하지 않음
+                    parallel_processing = ["thread", 4] if not USE_GPU else None,      # GPU 사용시 병렬처리 비활성화, CPU시 스레드 병렬처리
 
                     random_seed = random_seed,
 
@@ -403,26 +441,31 @@ def run_final_ga(study):
     return skr_value, solution, solution_fitness, solution_idx
 
 def main():
-    """메인 실행 함수 - L=100 특화"""
-    print("L=100에서 Optuna를 사용한 하이퍼파라미터 최적화를 시작합니다...")
-    study = run_optimization()
-    
-    print("\n최적화된 하이퍼파라미터로 L=100에서 최종 GA를 실행합니다...")
-    skr_value, solution, solution_fitness, solution_idx = run_final_ga(study)
-    
-    print(f"\n=== L=100에서의 최적화 결과 ===")
-    print(f"최적 SKR 값: {skr_value:.6e}")
-    print(f"최적 솔루션: {solution}")
-    print(f"최적 적합도: {solution_fitness}")
-    
-    # Optuna 시각화
-    print("\n최적화 히스토리를 시각화합니다...")
-    optuna.visualization.plot_optimization_history(study)
-    plt.show()
-    
-    print("\n파라미터 중요도를 시각화합니다...")
-    optuna.visualization.plot_param_importances(study)
-    plt.show()
+    """메인 실행 함수 - L=100 특화, GPU 가속"""
+    try:
+        print("L=100에서 Optuna를 사용한 하이퍼파라미터 최적화를 시작합니다...")
+        study = run_optimization()
+        
+        print("\n최적화된 하이퍼파라미터로 L=100에서 최종 GA를 실행합니다...")
+        skr_value, solution, solution_fitness, solution_idx = run_final_ga(study)
+        
+        print(f"\n=== L=100에서의 최적화 결과 ===")
+        print(f"최적 SKR 값: {skr_value:.6e}")
+        print(f"최적 솔루션: {solution}")
+        print(f"최적 적합도: {solution_fitness}")
+        
+        # Optuna 시각화
+        print("\n최적화 히스토리를 시각화합니다...")
+        optuna.visualization.plot_optimization_history(study)
+        plt.show()
+        
+        print("\n파라미터 중요도를 시각화합니다...")
+        optuna.visualization.plot_param_importances(study)
+        plt.show()
+        
+    finally:
+        # GPU 메모리 정리
+        clear_gpu_memory()
 
 if __name__ == "__main__":
     main()
