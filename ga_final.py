@@ -5,6 +5,7 @@ import seaborn as sns
 from adjustText import adjust_text
 
 import sys
+import os
 
 import pygad
 import time
@@ -26,6 +27,10 @@ try:
 except ImportError:
     GPU_AVAILABLE = False
     print("GPU 사용 불가: CuPy가 설치되지 않았습니다. CPU를 사용합니다.")
+
+# CPU 코어 수 자동 감지
+CPU_COUNT = os.cpu_count()
+print(f"사용 가능한 CPU 코어 수: {CPU_COUNT}")
 
 # GPU 사용 여부 설정 (True로 설정하면 GPU 사용, False면 CPU 사용)
 USE_GPU = True and GPU_AVAILABLE
@@ -282,7 +287,7 @@ def define_ga(co_type, mu_type, sel_type,
                     allow_duplicate_genes = False,                                       # True인 경우, solution/염색체에 중복된 유전자 값이 있을 수 있음
 
                     stop_criteria = None,
-                    parallel_processing = ["thread", 4] if not USE_GPU else None,      # GPU 사용시 병렬처리 비활성화, CPU시 스레드 병렬처리
+                    parallel_processing = ["thread", min(CPU_COUNT, 8)] if not USE_GPU else None,      # GPU 사용시 병렬처리 비활성화, CPU시 최대 8개 스레드 사용
 
                     random_seed = random_seed,
 
@@ -402,7 +407,12 @@ def run_optimization():
                                          group=True)
 
     study = optuna.create_study(sampler = sampler, direction="minimize")
-    study.optimize(objective, n_trials=100)
+    
+    # CPU 코어 수에 따른 병렬 최적화
+    n_jobs = min(CPU_COUNT, 4) if not USE_GPU else 1  # GPU 사용시 병렬처리 비활성화
+    print(f"Optuna 병렬 최적화: {n_jobs}개 작업으로 실행")
+    
+    study.optimize(objective, n_trials=100, n_jobs=n_jobs)
 
     print("Best trial:")
     print(study.best_trial)
@@ -442,24 +452,48 @@ def run_final_ga(study):
 
 def main():
     """메인 실행 함수 - L=100 특화, GPU 가속"""
+    start_time = time.time()
+    
     try:
-        print("L=100에서 Optuna를 사용한 하이퍼파라미터 최적화를 시작합니다...")
+        print("=" * 60)
+        print("🚀 QKD 파라미터 최적화 시작")
+        print("=" * 60)
+        print(f"💻 CPU 코어 수: {CPU_COUNT}")
+        print(f"🔧 GPU 사용: {'예' if USE_GPU else '아니오'}")
+        print(f"⚡ 병렬처리: {'최대 8개 스레드' if not USE_GPU else '비활성화'}")
+        print("=" * 60)
+        
+        print("\n🔍 L=100에서 Optuna를 사용한 하이퍼파라미터 최적화를 시작합니다...")
+        opt_start = time.time()
         study = run_optimization()
+        opt_time = time.time() - opt_start
+        print(f"⏱️  Optuna 최적화 완료: {opt_time:.2f}초")
         
-        print("\n최적화된 하이퍼파라미터로 L=100에서 최종 GA를 실행합니다...")
+        print("\n🎯 최적화된 하이퍼파라미터로 L=100에서 최종 GA를 실행합니다...")
+        ga_start = time.time()
         skr_value, solution, solution_fitness, solution_idx = run_final_ga(study)
+        ga_time = time.time() - ga_start
+        print(f"⏱️  GA 실행 완료: {ga_time:.2f}초")
         
-        print(f"\n=== L=100에서의 최적화 결과 ===")
-        print(f"최적 SKR 값: {skr_value:.6e}")
-        print(f"최적 솔루션: {solution}")
-        print(f"최적 적합도: {solution_fitness}")
+        total_time = time.time() - start_time
+        
+        print(f"\n{'='*60}")
+        print(f"🎉 L=100에서의 최적화 결과")
+        print(f"{'='*60}")
+        print(f"🏆 최적 SKR 값: {skr_value:.6e}")
+        print(f"📊 최적 솔루션: {solution}")
+        print(f"⭐ 최적 적합도: {solution_fitness}")
+        print(f"⏱️  총 실행 시간: {total_time:.2f}초")
+        print(f"   - Optuna 최적화: {opt_time:.2f}초 ({opt_time/total_time*100:.1f}%)")
+        print(f"   - GA 실행: {ga_time:.2f}초 ({ga_time/total_time*100:.1f}%)")
+        print(f"{'='*60}")
         
         # Optuna 시각화
-        print("\n최적화 히스토리를 시각화합니다...")
+        print("\n📈 최적화 히스토리를 시각화합니다...")
         optuna.visualization.plot_optimization_history(study)
         plt.show()
         
-        print("\n파라미터 중요도를 시각화합니다...")
+        print("\n📊 파라미터 중요도를 시각화합니다...")
         optuna.visualization.plot_param_importances(study)
         plt.show()
         

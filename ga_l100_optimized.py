@@ -158,7 +158,7 @@ def calc_SKR(ga_instance, solution, solution_idx):
     return SKR
 
 def define_ga(co_type, mu_type, sel_type, 
-              gen = 1000,
+              gen = 100,
               num_parents_mating = 60, sol_per_pop = 200, keep_parents = 50, keep_elitism = 10, K_tournament = 8, crossover_probability = 0.8, mutation_probability = 0.02, mutation_percent_genes = "default",
               make_df = False, df = None, random_seed = 42):
     """유전 알고리즘 인스턴스를 정의하는 함수"""
@@ -268,7 +268,7 @@ def run_optimized_ga():
         co_type=optimized_params['crossover_type'],
         mu_type=optimized_params['mutation_type'],
         sel_type=optimized_params['parent_selection_type'],
-        gen=1000,
+        gen=100,
         num_parents_mating=optimized_params['num_parents_mating'],
         sol_per_pop=optimized_params['sol_per_pop'],
         keep_parents=optimized_params['keep_parents'],
@@ -357,9 +357,6 @@ def main():
         print(f"  p_vac: {sol['p_vac']:.6f}")
         print(f"  p_x: {sol['p_x']:.6f}")
         print(f"  q_x: {sol['q_x']:.6f}")
-    
-    print("\n결과를 시각화합니다...")
-    
 
 if __name__ == "__main__":
     main()
