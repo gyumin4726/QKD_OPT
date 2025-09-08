@@ -205,21 +205,6 @@ def calc_SKR(ga_instance, solution, solution_idx):
 
     return SKR
 
-def calc_SKR_batch(solutions):
-    """배치 SKR 계산 함수 - GPU 가속"""
-    if USE_GPU:
-        solutions = cp.asarray(solutions)
-    
-    results = []
-    for solution in solutions:
-        try:
-            skr = calc_SKR(None, solution, 0)
-            results.append(skr)
-        except:
-            results.append(-10)  # 오류시 낮은 적합도 반환
-    
-    return xp.array(results)
-
 def define_ga(co_type, mu_type, sel_type, 
               gen = 100,
               num_parents_mating = 60, sol_per_pop = 200, keep_parents = 50, keep_elitism = 10, K_tournament = 8, crossover_probability = 0.8, mutation_probability = 0.02, mutation_percent_genes = "default",
@@ -392,7 +377,7 @@ def objective(trial):
                        mutation_percent_genes=mutation_percent_genes,
                        make_df=False,
                        df=None,
-                       random_seed=None)
+                       random_seed=42)
 
         ga.run()
         best_fitness = ga.best_solution()[1]
@@ -401,12 +386,29 @@ def objective(trial):
     return - total_fitness 
 
 def run_optimization():
-    """Optuna 최적화를 실행하는 함수"""
-    sampler = optuna.samplers.TPESampler(n_startup_trials=20,  
-                                         multivariate=True,    
-                                         group=True)
+    """Optuna 최적화를 실행하는 함수 - 최적화된 하이퍼파라미터를 초기값으로 사용"""
+    sampler = optuna.samplers.TPESampler(n_startup_trials=4,  
+                                         multivariate=False,    
+                                         group=False)
 
     study = optuna.create_study(sampler = sampler, direction="minimize")
+    
+    # 최적화된 하이퍼파라미터를 초기 시도로 추가
+    initial_params = {
+        'crossover_type': 'two_points',
+        'mutation_type': 'adaptive',
+        'parent_selection_type': 'sss',
+        'sol_per_pop': 218,
+        'num_parents_mating': 61,
+        'keep_parents': 44,
+        'keep_elitism': 17,
+        'crossover_probability': 0.8546404973857875,
+        'mutation_percent_genes': [0.7, 0.2]
+    }
+    
+    # 초기 시도를 study에 추가
+    study.enqueue_trial(initial_params)
+    print("최적화된 하이퍼파라미터를 초기 시도로 추가했습니다.")
     
     # CPU 코어 수에 따른 병렬 최적화
     n_jobs = min(CPU_COUNT, 4) if not USE_GPU else 1  # GPU 사용시 병렬처리 비활성화
@@ -441,7 +443,7 @@ def run_final_ga(study):
                                 crossover_probability = study.best_trial.params['crossover_probability'], 
                                 mutation_probability = None,
                                 mutation_percent_genes = study.best_trial.params['mutation_percent_genes'], 
-                                make_df = True, df = df, random_seed = None)
+                                make_df = True, df = df, random_seed = 42)
         ga_instance.run()
         solution, solution_fitness, solution_idx = ga_instance.best_solution()
 
@@ -451,51 +453,42 @@ def run_final_ga(study):
     return skr_value, solution, solution_fitness, solution_idx
 
 def main():
-    """메인 실행 함수 - L=100 특화, GPU 가속"""
+    """메인 실행 함수 - L=100 특화, GPU 가속, 최적화된 하이퍼파라미터를 초기값으로 사용"""
     start_time = time.time()
     
     try:
         print("=" * 60)
-        print("🚀 QKD 파라미터 최적화 시작")
+        print("QKD 파라미터 최적화 시작")
         print("=" * 60)
-        print(f"💻 CPU 코어 수: {CPU_COUNT}")
-        print(f"🔧 GPU 사용: {'예' if USE_GPU else '아니오'}")
-        print(f"⚡ 병렬처리: {'최대 8개 스레드' if not USE_GPU else '비활성화'}")
+        print(f"CPU 코어 수: {CPU_COUNT}")
+        print(f"GPU 사용: {'예' if USE_GPU else '아니오'}")
+        print(f"병렬처리: {'최대 8개 스레드' if not USE_GPU else '비활성화'}")
         print("=" * 60)
         
-        print("\n🔍 L=100에서 Optuna를 사용한 하이퍼파라미터 최적화를 시작합니다...")
+        print("\nL=100에서 Optuna를 사용한 하이퍼파라미터 최적화를 시작합니다...")
         opt_start = time.time()
         study = run_optimization()
         opt_time = time.time() - opt_start
-        print(f"⏱️  Optuna 최적화 완료: {opt_time:.2f}초")
+        print(f"Optuna 최적화 완료: {opt_time:.2f}초")
         
-        print("\n🎯 최적화된 하이퍼파라미터로 L=100에서 최종 GA를 실행합니다...")
+        print("\n최적화된 하이퍼파라미터로 L=100에서 최종 GA를 실행합니다...")
         ga_start = time.time()
         skr_value, solution, solution_fitness, solution_idx = run_final_ga(study)
         ga_time = time.time() - ga_start
-        print(f"⏱️  GA 실행 완료: {ga_time:.2f}초")
+        print(f"GA 실행 완료: {ga_time:.2f}초")
         
         total_time = time.time() - start_time
         
         print(f"\n{'='*60}")
-        print(f"🎉 L=100에서의 최적화 결과")
+        print(f"L=100에서의 최적화 결과")
         print(f"{'='*60}")
-        print(f"🏆 최적 SKR 값: {skr_value:.6e}")
-        print(f"📊 최적 솔루션: {solution}")
-        print(f"⭐ 최적 적합도: {solution_fitness}")
-        print(f"⏱️  총 실행 시간: {total_time:.2f}초")
-        print(f"   - Optuna 최적화: {opt_time:.2f}초 ({opt_time/total_time*100:.1f}%)")
-        print(f"   - GA 실행: {ga_time:.2f}초 ({ga_time/total_time*100:.1f}%)")
+        print(f"최적 SKR 값: {skr_value:.6e}")
+        print(f"최적 솔루션: {solution}")
+        print(f"최적 적합도: {solution_fitness}")
+        print(f"총 실행 시간: {total_time:.2f}초")
+        print(f" - Optuna 최적화: {opt_time:.2f}초 ({opt_time/total_time*100:.1f}%)")
+        print(f" - GA 실행: {ga_time:.2f}초 ({ga_time/total_time*100:.1f}%)")
         print(f"{'='*60}")
-        
-        # Optuna 시각화
-        print("\n📈 최적화 히스토리를 시각화합니다...")
-        optuna.visualization.plot_optimization_history(study)
-        plt.show()
-        
-        print("\n📊 파라미터 중요도를 시각화합니다...")
-        optuna.visualization.plot_param_importances(study)
-        plt.show()
         
     finally:
         # GPU 메모리 정리
