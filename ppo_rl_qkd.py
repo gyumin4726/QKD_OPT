@@ -22,18 +22,18 @@ class QKDRLEnv:
         # 기준이 될 초기값 (ga로 찾은 최적 파라미터)
         # vaccum이 0이 아님.
         # mu, nu, vac, p_mu, p_nu, p_vac, p_X, q_X
-        initial_state = np.array([0.52378497, 0.23222502, 0.07867111, 0.19124826, 0.77213183, 0.08395647, 0.45371464, 0.13419111])
+        initial_state = np.array([0.900994, 0.186971, 0.136371, 0.014985, 0.905555, 0.079460, 0.083600, 0.097915])
         
         self.initial_state = initial_state.copy() 
         
         # 탐색 범위를 결정할 작은 값
-        #delta = 0.2
+        delta = 0.2
         
         # initial_state를 기준으로 새로운 low와 high 범위 설정
-        #self.low = initial_state - delta
-        #self.high = initial_state + delta
-        self.low = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-        self.high = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+        self.low = np.maximum(initial_state - delta, 0)
+        self.high = np.minimum(initial_state + delta, 1)
+        #self.low = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        #self.high = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
         
         self.param_dim = 8
         self.state = None # 초기 상태는 reset()에서 설정
@@ -96,8 +96,8 @@ def train_ppo():
     optimizer_value = optim.Adam(value_net.parameters(), lr=1e-3)
 
     gamma = 0.99        # 할인 인자
-    clip_param = 0.2    # PPO 클리핑 파라미터
-    epochs = 8000          # episodes 수
+    clip_param = 0.9    # PPO 클리핑 파라미터
+    epochs = 500          # episodes 수
     batch_size = 128   # 각 episode 당 step 수
     action_scale = 0.01 # action의 스케일 조정
 

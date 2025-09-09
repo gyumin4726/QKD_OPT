@@ -353,13 +353,14 @@ def run_optimization():
     initial_params = {
         'crossover_type': 'two_points',
         'mutation_type': 'adaptive',
-        'parent_selection_type': 'sss',
-        'sol_per_pop': 218,
-        'num_parents_mating': 61,
-        'keep_parents': 44,
-        'keep_elitism': 17,
-        'crossover_probability': 0.8546404973857875,
-        'mutation_percent_genes': [0.7, 0.2]
+        'parent_selection_type': 'tournament',
+        'sol_per_pop': 94,
+        'num_parents_mating': 18,
+        'keep_parents': 8,
+        'keep_elitism': 10,
+        'crossover_probability': 0.6500780417119777,
+        'mutation_percent_genes': [0.5, 0.05],
+        'K_tournament': 8,
     }
     
     # 초기 시도를 study에 추가
