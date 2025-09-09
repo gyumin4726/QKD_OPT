@@ -254,7 +254,7 @@ def run_optimized_ga():
         'num_parents_mating': 18,
         'keep_parents': 8,
         'keep_elitism': 10,
-        'crossover_probability': 0.6500780417119777,
+        'crossover_probability': 0.6400780417119777,
         'mutation_percent_genes': [0.5, 0.05]
     }
 
