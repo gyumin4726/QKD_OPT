@@ -27,13 +27,13 @@ class QKDRLEnv:
         self.initial_state = initial_state.copy() 
         
         # 탐색 범위를 결정할 작은 값
-        delta = 0.2
+        #delta = 0.2
         
         # initial_state를 기준으로 새로운 low와 high 범위 설정
-        self.low = initial_state - delta
-        self.high = initial_state + delta
-        #self.low = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-        #self.high = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+        #self.low = initial_state - delta
+        #self.high = initial_state + delta
+        self.low = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        self.high = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
         
         self.param_dim = 8
         self.state = None # 초기 상태는 reset()에서 설정
@@ -97,8 +97,8 @@ def train_ppo():
 
     gamma = 0.99        # 할인 인자
     clip_param = 0.2    # PPO 클리핑 파라미터
-    epochs = 500          # episodes 수
-    batch_size = 32   # 각 episode 당 step 수
+    epochs = 8000          # episodes 수
+    batch_size = 128   # 각 episode 당 step 수
     action_scale = 0.01 # action의 스케일 조정
 
     best_reward = -np.inf 

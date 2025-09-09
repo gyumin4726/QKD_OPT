@@ -23,6 +23,11 @@ warnings.filterwarnings('ignore')
 CPU_COUNT = os.cpu_count()
 print(f"사용 가능한 CPU 코어 수: {CPU_COUNT}")
 
+# 재현 가능한 결과를 위한 시드 설정
+import random
+random.seed(42)
+np.random.seed(42)
+
 # 상수 정의
 eta_d = 4.5 / 100                     # detection efficiency of single-photon detector (%)
 Y_0 = 1.7e-6
@@ -44,8 +49,7 @@ def normalize_p(vec):
     """벡터를 정규화하는 함수"""
     copy_vec = vec[:].copy()
     sum_vec = np.sum(copy_vec[3:6])
-    if sum_vec > 0:  # 0으로 나누기 방지
-        copy_vec[3:6] /= sum_vec
+    copy_vec[3:6] /= sum_vec
     return copy_vec
 
 def h(x):
@@ -230,7 +234,7 @@ def define_ga(co_type, mu_type, sel_type,
                     allow_duplicate_genes = False,                                       # True인 경우, solution/염색체에 중복된 유전자 값이 있을 수 있음
 
                     stop_criteria = None,
-                    parallel_processing = ["thread", min(CPU_COUNT, 8)],      # 최대 8개 스레드 사용
+                    parallel_processing = None,                                          # None인 경우 병렬 처리 허용하지 않음
 
                     random_seed = random_seed,
 
@@ -362,11 +366,7 @@ def run_optimization():
     study.enqueue_trial(initial_params)
     print("최적화된 하이퍼파라미터를 초기 시도로 추가했습니다.")
     
-    # CPU 코어 수에 따른 병렬 최적화
-    n_jobs = min(CPU_COUNT, 4)  # 최대 4개 작업으로 병렬 최적화
-    print(f"Optuna 병렬 최적화: {n_jobs}개 작업으로 실행")
-    
-    study.optimize(objective, n_trials=100, n_jobs=n_jobs)
+    study.optimize(objective, n_trials=100, n_jobs=1)
 
     print("Best trial:")
     print(study.best_trial)

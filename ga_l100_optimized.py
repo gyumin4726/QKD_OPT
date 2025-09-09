@@ -18,6 +18,11 @@ import optuna
 import warnings
 warnings.filterwarnings('ignore')
 
+# 재현 가능한 결과를 위한 시드 설정
+import random
+random.seed(42)
+np.random.seed(42)
+
 # 상수 정의
 eta_d = 4.5 / 100                     # detection efficiency of single-photon detector (%)
 Y_0 = 1.7e-6
@@ -158,7 +163,7 @@ def calc_SKR(ga_instance, solution, solution_idx):
     return SKR
 
 def define_ga(co_type, mu_type, sel_type, 
-              gen = 100,
+              gen = 200,
               num_parents_mating = 60, sol_per_pop = 200, keep_parents = 50, keep_elitism = 10, K_tournament = 8, crossover_probability = 0.8, mutation_probability = 0.02, mutation_percent_genes = "default",
               make_df = False, df = None, random_seed = 42):
     """유전 알고리즘 인스턴스를 정의하는 함수"""
@@ -226,7 +231,7 @@ def define_ga(co_type, mu_type, sel_type,
                     stop_criteria = None,
                     parallel_processing = None,                                          # None인 경우 병렬 처리 허용하지 않음
 
-                    random_seed = random_seed,
+                    random_seed = 42,
 
                     logger = None                                                        # logger 허용
                     )
@@ -268,7 +273,7 @@ def run_optimized_ga():
         co_type=optimized_params['crossover_type'],
         mu_type=optimized_params['mutation_type'],
         sel_type=optimized_params['parent_selection_type'],
-        gen=100,
+        gen=200,
         num_parents_mating=optimized_params['num_parents_mating'],
         sol_per_pop=optimized_params['sol_per_pop'],
         keep_parents=optimized_params['keep_parents'],
@@ -357,6 +362,7 @@ def main():
         print(f"  p_vac: {sol['p_vac']:.6f}")
         print(f"  p_x: {sol['p_x']:.6f}")
         print(f"  q_x: {sol['q_x']:.6f}")
+    
 
 if __name__ == "__main__":
     main()
