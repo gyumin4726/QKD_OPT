@@ -22,12 +22,12 @@ class QKDRLEnv:
         # 기준이 될 초기값 (ga로 찾은 최적 파라미터)
         # vaccum이 0이 아님.
         # mu, nu, vac, p_mu, p_nu, p_vac, p_X, q_X
-        initial_state = np.array([0.52393288, 0.23346136, 0.07864391, 0.19227209, 0.77347351, 0.08359086, 0.45512477, 0.13564011])
+        initial_state = np.array([0.52378497, 0.23222502, 0.07867111, 0.19124826, 0.77213183, 0.08395647, 0.45371464, 0.13419111])
         
         self.initial_state = initial_state.copy() 
         
         # 탐색 범위를 결정할 작은 값
-        delta = 0.02
+        delta = 0.2
         
         # initial_state를 기준으로 새로운 low와 high 범위 설정
         self.low = initial_state - delta

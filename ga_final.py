@@ -19,44 +19,9 @@ import optuna
 import warnings
 warnings.filterwarnings('ignore')
 
-# GPU 사용 설정
-try:
-    import cupy as cp
-    GPU_AVAILABLE = True
-    print("GPU 사용 가능: CuPy가 설치되어 있습니다.")
-except ImportError:
-    GPU_AVAILABLE = False
-    print("GPU 사용 불가: CuPy가 설치되지 않았습니다. CPU를 사용합니다.")
-
 # CPU 코어 수 자동 감지
 CPU_COUNT = os.cpu_count()
 print(f"사용 가능한 CPU 코어 수: {CPU_COUNT}")
-
-# GPU 사용 여부 설정 (True로 설정하면 GPU 사용, False면 CPU 사용)
-USE_GPU = True and GPU_AVAILABLE
-
-if USE_GPU:
-    print("GPU 모드로 실행합니다.")
-    # CuPy를 기본 배열 라이브러리로 설정
-    xp = cp
-    
-    # GPU 메모리 정보 출력
-    mempool = cp.get_default_memory_pool()
-    pinned_mempool = cp.get_default_pinned_memory_pool()
-    print(f"GPU 메모리 풀 크기: {mempool.used_bytes() / 1024**2:.2f} MB")
-    
-    def clear_gpu_memory():
-        """GPU 메모리 정리 함수"""
-        mempool.free_all_blocks()
-        pinned_mempool.free_all_blocks()
-        print("GPU 메모리가 정리되었습니다.")
-else:
-    print("CPU 모드로 실행합니다.")
-    xp = np
-    
-    def clear_gpu_memory():
-        """CPU 모드에서는 아무것도 하지 않음"""
-        pass
 
 # 상수 정의
 eta_d = 4.5 / 100                     # detection efficiency of single-photon detector (%)
@@ -76,26 +41,19 @@ L = 100                                # fiber length (0~110)
 e_0 = 0.5                              # ref 23 참고, error rate of the background, background가 랜덤한 경우 가정
 
 def normalize_p(vec):
-    """벡터를 정규화하는 함수 - GPU 최적화"""
-    if USE_GPU and not hasattr(vec, 'get'):
-        vec = cp.asarray(vec)
-    
+    """벡터를 정규화하는 함수"""
     copy_vec = vec[:].copy()
-    sum_vec = xp.sum(copy_vec[3:6])
+    sum_vec = np.sum(copy_vec[3:6])
     if sum_vec > 0:  # 0으로 나누기 방지
         copy_vec[3:6] /= sum_vec
     return copy_vec
 
 def h(x):
     """이진 엔트로피 함수"""
-    return -x * xp.log2(x) - (1 - x)*xp.log2(1 - x)
+    return -x * np.log2(x) - (1 - x)*np.log2(1 - x)
 
 def calc_SKR(ga_instance, solution, solution_idx):
-    """SKR(Secret Key Rate) 계산 함수 - GPU 가속 최적화"""
-    # GPU 배열로 변환
-    if USE_GPU and not hasattr(solution, 'get'):
-        solution = cp.asarray(solution)
-    
+    """SKR(Secret Key Rate) 계산 함수"""
     sol = normalize_p(solution)
     mu, nu, vac, p_mu, p_nu, p_vac, p_X, q_X = sol
 
@@ -107,9 +65,9 @@ def calc_SKR(ga_instance, solution, solution_idx):
 
     eta = eta_d * 10 ** (-alpha*L/10)
 
-    Q_mu = 1 - (1 - Y_0) * xp.exp(-mu * eta)
-    Q_nu = 1 - (1 - Y_0) * xp.exp(-nu * eta)
-    Q_vac = 1 - (1 - Y_0) * xp.exp(-vac * eta)
+    Q_mu = 1 - (1 - Y_0) * np.exp(-mu * eta)
+    Q_nu = 1 - (1 - Y_0) * np.exp(-nu * eta)
+    Q_vac = 1 - (1 - Y_0) * np.exp(-vac * eta)
 
     n_mu_Z = N * p_mu * p_Z * q_Z * Q_mu
     n_nu_Z = N * p_nu * p_Z * q_Z * Q_nu
@@ -130,43 +88,43 @@ def calc_SKR(ga_instance, solution, solution_idx):
         return -8
     
     # Z-basis lower bound
-    n_0_z_L_ex = n_vac_Z - beta/2-xp.sqrt(2*beta*n_vac_Z+beta**2/4)
-    n_nu_z_L_ex = n_nu_Z - beta/2-xp.sqrt(2*beta*n_nu_Z+beta**2/4)
+    n_0_z_L_ex = n_vac_Z - beta/2-np.sqrt(2*beta*n_vac_Z+beta**2/4)
+    n_nu_z_L_ex = n_nu_Z - beta/2-np.sqrt(2*beta*n_nu_Z+beta**2/4)
 
     # Z-basis upper bound
-    n_mu_z_U_ex = n_mu_Z + beta+xp.sqrt(2*beta*n_mu_Z+beta**2)
-    n_0_z_U_ex = n_vac_Z + beta+xp.sqrt(2*beta*n_vac_Z+beta**2)
+    n_mu_z_U_ex = n_mu_Z + beta+np.sqrt(2*beta*n_mu_Z+beta**2)
+    n_0_z_U_ex = n_vac_Z + beta+np.sqrt(2*beta*n_vac_Z+beta**2)
 
     # X-basis lower bound
-    n_0_x_L_ex = n_vac_X - beta/2-xp.sqrt(2*beta*n_vac_X+beta**2/4)
-    n_nu_x_L_ex = n_nu_X - beta/2-xp.sqrt(2*beta*n_nu_X+beta**2/4)                 
+    n_0_x_L_ex = n_vac_X - beta/2-np.sqrt(2*beta*n_vac_X+beta**2/4)
+    n_nu_x_L_ex = n_nu_X - beta/2-np.sqrt(2*beta*n_nu_X+beta**2/4)                 
 
     # X-basis upper bound
-    n_mu_x_U_ex = n_mu_X + beta+xp.sqrt(2*beta*n_mu_X+beta**2)
-    n_0_x_U_ex = n_vac_X + beta+xp.sqrt(2*beta*n_vac_X+beta**2)
+    n_mu_x_U_ex = n_mu_X + beta+np.sqrt(2*beta*n_mu_X+beta**2)
+    n_0_x_U_ex = n_vac_X + beta+np.sqrt(2*beta*n_vac_X+beta**2)
 
     # error upper bound
-    m_nu_x_U_ex = m_nu_X + beta+xp.sqrt(2*beta*m_nu_X+beta**2)
+    m_nu_x_U_ex = m_nu_X + beta+np.sqrt(2*beta*m_nu_X+beta**2)
 
     if (n_0_z_L_ex<0) or (n_nu_z_L_ex<0) or (n_mu_z_U_ex<0) or (n_0_z_U_ex<0) or (n_0_x_L_ex<0) or (n_nu_x_L_ex<0) or (n_mu_x_U_ex<0) or (n_0_x_U_ex<0) or (m_nu_x_U_ex<0) :
         return -7
     
     # lower bound on the expected number of vacuum event
-    S_0_Z_L_ex = (xp.exp(-mu)*p_mu+xp.exp(-nu)*p_nu)*p_Z*n_0_z_L_ex/p_vac
+    S_0_Z_L_ex = (np.exp(-mu)*p_mu+np.exp(-nu)*p_nu)*p_Z*n_0_z_L_ex/p_vac
     # lower bound on the expected number of single photon event
-    S_1_Z_L_ex = (mu**2*xp.exp(-mu)*p_mu+mu*nu*xp.exp(-nu)*p_nu)/(mu*nu-nu**2)*(xp.exp(nu)*n_nu_z_L_ex/p_nu-nu**2/mu**2*xp.exp(mu)*n_mu_z_U_ex/p_mu-(mu**2-nu**2)/mu**2*p_Z*n_0_z_U_ex/p_vac)
+    S_1_Z_L_ex = (mu**2*np.exp(-mu)*p_mu+mu*nu*np.exp(-nu)*p_nu)/(mu*nu-nu**2)*(np.exp(nu)*n_nu_z_L_ex/p_nu-nu**2/mu**2*np.exp(mu)*n_mu_z_U_ex/p_mu-(mu**2-nu**2)/mu**2*p_Z*n_0_z_U_ex/p_vac)
     # lower bound on the expected number of single-photon events
-    S_1_X_L_ex = (mu**2*xp.exp(-mu)*p_mu+mu*nu*xp.exp(-nu)*p_nu)/(mu*nu-nu**2)*(xp.exp(nu)*n_nu_x_L_ex/p_nu-nu**2/mu**2*xp.exp(mu)*n_mu_x_U_ex/p_mu-(mu**2-nu**2)/mu**2*p_X*n_0_x_U_ex/p_vac)
+    S_1_X_L_ex = (mu**2*np.exp(-mu)*p_mu+mu*nu*np.exp(-nu)*p_nu)/(mu*nu-nu**2)*(np.exp(nu)*n_nu_x_L_ex/p_nu-nu**2/mu**2*np.exp(mu)*n_mu_x_U_ex/p_mu-(mu**2-nu**2)/mu**2*p_X*n_0_x_U_ex/p_vac)
     # upper bound on the expected number of bit error
-    T_1_X_U_ex = ((mu*xp.exp(-mu)*p_mu+nu*xp.exp(-nu)*p_nu)/nu)*(xp.exp(nu)*m_nu_x_U_ex/p_nu-p_X*n_0_x_L_ex/(2*p_vac))
+    T_1_X_U_ex = ((mu*np.exp(-mu)*p_mu+nu*np.exp(-nu)*p_nu)/nu)*(np.exp(nu)*m_nu_x_U_ex/p_nu-p_X*n_0_x_L_ex/(2*p_vac))
 
     if (S_0_Z_L_ex<0)or(S_1_Z_L_ex<0)or(S_1_X_L_ex<0)or(T_1_X_U_ex<0) : 
         return -6
 
-    S_0_Z_L = S_0_Z_L_ex - xp.sqrt(2*beta*S_0_Z_L_ex)
-    S_1_Z_L = S_1_Z_L_ex - xp.sqrt(2*beta*S_1_Z_L_ex)
-    S_1_X_L = S_1_X_L_ex - xp.sqrt(2*beta*S_1_X_L_ex)
-    T_1_X_U = T_1_X_U_ex + beta/2+xp.sqrt(2*beta*T_1_X_U_ex+beta**2/4)
+    S_0_Z_L = S_0_Z_L_ex - np.sqrt(2*beta*S_0_Z_L_ex)
+    S_1_Z_L = S_1_Z_L_ex - np.sqrt(2*beta*S_1_Z_L_ex)
+    S_1_X_L = S_1_X_L_ex - np.sqrt(2*beta*S_1_X_L_ex)
+    T_1_X_U = T_1_X_U_ex + beta/2+np.sqrt(2*beta*T_1_X_U_ex+beta**2/4)
 
     if (S_0_Z_L<0)or(S_1_Z_L<0)or(S_1_X_L<0)or(T_1_X_U<0) : 
         return -5
@@ -178,10 +136,10 @@ def calc_SKR(ga_instance, solution, solution_idx):
     if (n < 0) or (k < 0) : 
         return -4
 
-    A = xp.max([n,k])
-    G = (n+k)/(n*k) * xp.log((n+k) / (2*xp.pi*n*k*Lambda*(1-Lambda)*eps**2))
+    A = np.max([n,k])
+    G = (n+k)/(n*k) * np.log((n+k) / (2*np.pi*n*k*Lambda*(1-Lambda)*eps**2))
 
-    gamma_U = (((1 - 2 * Lambda)*A*G)/(n+k) + xp.sqrt(A**2*G**2/(n+k)**2 + 4*Lambda*(1-Lambda)*G))/ (2 + 2*A**2*G/(n + k)**2)
+    gamma_U = (((1 - 2 * Lambda)*A*G)/(n+k) + np.sqrt(A**2*G**2/(n+k)**2 + 4*Lambda*(1-Lambda)*G))/ (2 + 2*A**2*G/(n + k)**2)
 
     phi_1_Z_U =  Lambda + gamma_U
     if (phi_1_Z_U > 0.5) or (phi_1_Z_U <0):
@@ -206,7 +164,7 @@ def calc_SKR(ga_instance, solution, solution_idx):
     return SKR
 
 def define_ga(co_type, mu_type, sel_type, 
-              gen = 100,
+              gen = 200,
               num_parents_mating = 60, sol_per_pop = 200, keep_parents = 50, keep_elitism = 10, K_tournament = 8, crossover_probability = 0.8, mutation_probability = 0.02, mutation_percent_genes = "default",
               make_df = False, df = None, random_seed = 42):
     """유전 알고리즘 인스턴스를 정의하는 함수"""
@@ -272,7 +230,7 @@ def define_ga(co_type, mu_type, sel_type,
                     allow_duplicate_genes = False,                                       # True인 경우, solution/염색체에 중복된 유전자 값이 있을 수 있음
 
                     stop_criteria = None,
-                    parallel_processing = ["thread", min(CPU_COUNT, 8)] if not USE_GPU else None,      # GPU 사용시 병렬처리 비활성화, CPU시 최대 8개 스레드 사용
+                    parallel_processing = ["thread", min(CPU_COUNT, 8)],      # 최대 8개 스레드 사용
 
                     random_seed = random_seed,
 
@@ -286,12 +244,6 @@ ref = [3e-3, 1.7e-3, 9e-4, 5e-4, 2.9e-4, 1.7e-4, 8e-5, 4e-5, 1.9e-5, 8e-6, 3e-6,
 def plot_SKR(skr_list, title = '  ', save = False):
     """SKR 결과를 시각화하는 함수"""
     plt.figure(figsize=(10, 6))
-
-    # GPU 배열을 CPU로 변환 (필요한 경우)
-    if USE_GPU and hasattr(skr_list, 'get'):
-        skr_list = skr_list.get()
-    elif USE_GPU and hasattr(skr_list[0], 'get'):
-        skr_list = [item.get() if hasattr(item, 'get') else item for item in skr_list]
 
     x_ga = np.arange(0, len(skr_list) * 5, 5)  
     x_ref = np.arange(0, len(ref) * 10, 10)               
@@ -333,7 +285,7 @@ def make_df():
     return df
 
 # Optuna를 사용한 하이퍼파라미터 최적화 - L=100 고정
-num_iter = 3   
+num_iter = 1
 
 def objective(trial):
     """Optuna 최적화 목적 함수 - L=100 고정"""
@@ -366,7 +318,7 @@ def objective(trial):
         ga = define_ga(co_type=crossover_type,
                        mu_type=mutation_type,
                        sel_type=parent_selection_type,
-                       gen = 100,
+                       gen = 200,
                        num_parents_mating=num_parents_mating,
                        sol_per_pop=sol_per_pop,
                        keep_parents=keep_parents,
@@ -387,7 +339,7 @@ def objective(trial):
 
 def run_optimization():
     """Optuna 최적화를 실행하는 함수 - 최적화된 하이퍼파라미터를 초기값으로 사용"""
-    sampler = optuna.samplers.TPESampler(n_startup_trials=4,  
+    sampler = optuna.samplers.TPESampler(n_startup_trials=20,  
                                          multivariate=False,    
                                          group=False)
 
@@ -411,7 +363,7 @@ def run_optimization():
     print("최적화된 하이퍼파라미터를 초기 시도로 추가했습니다.")
     
     # CPU 코어 수에 따른 병렬 최적화
-    n_jobs = min(CPU_COUNT, 4) if not USE_GPU else 1  # GPU 사용시 병렬처리 비활성화
+    n_jobs = min(CPU_COUNT, 4)  # 최대 4개 작업으로 병렬 최적화
     print(f"Optuna 병렬 최적화: {n_jobs}개 작업으로 실행")
     
     study.optimize(objective, n_trials=100, n_jobs=n_jobs)
@@ -435,7 +387,7 @@ def run_final_ga(study):
         ga_instance = define_ga(co_type = study.best_trial.params['crossover_type'], 
                                 mu_type = study.best_trial.params['mutation_type'], 
                                 sel_type = study.best_trial.params['parent_selection_type'], 
-                                gen = 100,
+                                gen = 200,
                                 num_parents_mating = study.best_trial.params['num_parents_mating'], 
                                 sol_per_pop = study.best_trial.params['sol_per_pop'],
                                 keep_parents = study.best_trial.params['keep_parents'], 
@@ -453,46 +405,40 @@ def run_final_ga(study):
     return skr_value, solution, solution_fitness, solution_idx
 
 def main():
-    """메인 실행 함수 - L=100 특화, GPU 가속, 최적화된 하이퍼파라미터를 초기값으로 사용"""
+    """메인 실행 함수 - L=100 특화, 최적화된 하이퍼파라미터를 초기값으로 사용"""
     start_time = time.time()
     
-    try:
-        print("=" * 60)
-        print("QKD 파라미터 최적화 시작")
-        print("=" * 60)
-        print(f"CPU 코어 수: {CPU_COUNT}")
-        print(f"GPU 사용: {'예' if USE_GPU else '아니오'}")
-        print(f"병렬처리: {'최대 8개 스레드' if not USE_GPU else '비활성화'}")
-        print("=" * 60)
-        
-        print("\nL=100에서 Optuna를 사용한 하이퍼파라미터 최적화를 시작합니다...")
-        opt_start = time.time()
-        study = run_optimization()
-        opt_time = time.time() - opt_start
-        print(f"Optuna 최적화 완료: {opt_time:.2f}초")
-        
-        print("\n최적화된 하이퍼파라미터로 L=100에서 최종 GA를 실행합니다...")
-        ga_start = time.time()
-        skr_value, solution, solution_fitness, solution_idx = run_final_ga(study)
-        ga_time = time.time() - ga_start
-        print(f"GA 실행 완료: {ga_time:.2f}초")
-        
-        total_time = time.time() - start_time
-        
-        print(f"\n{'='*60}")
-        print(f"L=100에서의 최적화 결과")
-        print(f"{'='*60}")
-        print(f"최적 SKR 값: {skr_value:.6e}")
-        print(f"최적 솔루션: {solution}")
-        print(f"최적 적합도: {solution_fitness}")
-        print(f"총 실행 시간: {total_time:.2f}초")
-        print(f" - Optuna 최적화: {opt_time:.2f}초 ({opt_time/total_time*100:.1f}%)")
-        print(f" - GA 실행: {ga_time:.2f}초 ({ga_time/total_time*100:.1f}%)")
-        print(f"{'='*60}")
-        
-    finally:
-        # GPU 메모리 정리
-        clear_gpu_memory()
+    print("=" * 60)
+    print("QKD 파라미터 최적화 시작")
+    print("=" * 60)
+    print(f"CPU 코어 수: {CPU_COUNT}")
+    print(f"병렬처리: 최대 8개 스레드")
+    print("=" * 60)
+    
+    print("\nL=100에서 Optuna를 사용한 하이퍼파라미터 최적화를 시작합니다...")
+    opt_start = time.time()
+    study = run_optimization()
+    opt_time = time.time() - opt_start
+    print(f"Optuna 최적화 완료: {opt_time:.2f}초")
+    
+    print("\n최적화된 하이퍼파라미터로 L=100에서 최종 GA를 실행합니다...")
+    ga_start = time.time()
+    skr_value, solution, solution_fitness, solution_idx = run_final_ga(study)
+    ga_time = time.time() - ga_start
+    print(f"GA 실행 완료: {ga_time:.2f}초")
+    
+    total_time = time.time() - start_time
+    
+    print(f"\n{'='*60}")
+    print(f"L=100에서의 최적화 결과")
+    print(f"{'='*60}")
+    print(f"최적 SKR 값: {skr_value:.6e}")
+    print(f"최적 솔루션: {solution}")
+    print(f"최적 적합도: {solution_fitness}")
+    print(f"총 실행 시간: {total_time:.2f}초")
+    print(f" - Optuna 최적화: {opt_time:.2f}초 ({opt_time/total_time*100:.1f}%)")
+    print(f" - GA 실행: {ga_time:.2f}초 ({ga_time/total_time*100:.1f}%)")
+    print(f"{'='*60}")
 
 if __name__ == "__main__":
     main()
