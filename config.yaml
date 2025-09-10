@@ -1,0 +1,32 @@
+# QKD 파라미터 설정 파일
+# Quantum Key Distribution Configuration
+
+# Detection parameters
+detection:
+  eta_d: 0.045                    # detection efficiency of single-photon detector (%)
+  Y_0: 1.7e-6                     # dark count rate
+  e_d: 0.033                      # misalignment rate
+
+# Fiber parameters
+fiber:
+  alpha: 0.21                     # attenuation coefficient of single-mode fiber
+  # L: 100                        # fiber length (0~110) - 사용자 입력으로 변경됨
+
+# Error correction parameters
+error_correction:
+  zeta: 1.22                      # efficiency of error correction
+  e_0: 0.5                        # error rate of the background (ref 23)
+
+# Security parameters
+security:
+  eps_sec: 1.0e-10                # security parameter
+  eps_cor: 1.0e-15                # correctness parameter
+
+# System parameters
+system:
+  N: 1.0e10                       # number of optical pulses sent by Alice
+  Lambda: null                    # probability of bit value 1 observed in Xk
+
+# Reference data for comparison
+reference:
+  skr_values: [3.0e-3, 1.7e-3, 9.0e-4, 5.0e-4, 2.9e-4, 1.7e-4, 8.0e-5, 4.0e-5, 1.9e-5, 8.0e-6, 3.0e-6, 3.0e-7]
