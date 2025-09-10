@@ -1,31 +1,39 @@
 import numpy as np
+import yaml
 
-eta_d = 4.5 / 100                     # detection efficiency of single-photon detector (%)
-Y_0 = 1.7e-6
-e_d = 3.3 / 100                       # misalignment rate
-alpha = 0.21                          # attenuation coefficient of single-mode fiber
-zeta = 1.22                           # efficiency of error correction
-eps_sec = 1e-10
-eps_cor = 1e-15
-N = 1e10                              # number of optical pulses sent by Alice
+# 설정 파일 로드
+with open('config.yaml', 'r', encoding='utf-8') as file:
+    config = yaml.safe_load(file)
 
-eps = eps_sec/23                 
+# 상수 정의 (YAML에서 로드)
+eta_d = float(config['detection']['eta_d'])
+Y_0 = float(config['detection']['Y_0'])
+e_d = float(config['detection']['e_d'])
+alpha = float(config['fiber']['alpha'])
+zeta = float(config['error_correction']['zeta'])
+e_0 = float(config['error_correction']['e_0'])
+eps_sec = float(config['security']['eps_sec'])
+eps_cor = float(config['security']['eps_cor'])
+N = float(config['system']['N'])
+Lambda = config['system']['Lambda']  # None일 수 있음
+
+# 파생 상수
+eps = eps_sec/23
 beta = np.log(1/eps)
 
-Lambda = None                          # probability of bit value 1 observed in Xk
-L = 100                                # fiber length (0~110)
-e_0 = 0.5                              # ref 23 참고, error rate of the background, background가 랜덤한 경우 가정
+# L은 전역 변수로 설정
+L = 100
 
 
-def normalize_p(vec) :
-
+def normalize_p(vec):
+    """벡터를 정규화하는 함수"""
     copy_vec = vec[:].copy()
-
     sum_vec = np.sum(copy_vec[3:6])
     copy_vec[3:6] /= sum_vec
     return copy_vec
 
-def h(x) :
+def h(x):
+    """이진 엔트로피 함수"""
     return -x * np.log2(x) - (1 - x)*np.log2(1 - x)
 
 def rl_simulator(_, solution, __) :

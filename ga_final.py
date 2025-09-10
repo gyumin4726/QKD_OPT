@@ -1,42 +1,33 @@
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-from adjustText import adjust_text
-
-import sys
 import os
-
 import pygad
 import time
-
 from tqdm import tqdm
-
 import optuna
+import yaml
 
 import warnings
 warnings.filterwarnings('ignore')
 
-# YAML 설정 파일 읽기
-import yaml
-
 # RL 시뮬레이터 import
-from simulator import rl_simulator
+from simulator import rl_simulator, normalize_p
 
 # 설정 파일 로드
 with open('config.yaml', 'r', encoding='utf-8') as file:
     config = yaml.safe_load(file)
 
 # 상수 정의 (YAML에서 로드)
-eta_d = config['detection']['eta_d']
-Y_0 = config['detection']['Y_0']
-e_d = config['detection']['e_d']
-alpha = config['fiber']['alpha']
-zeta = config['error_correction']['zeta']
-e_0 = config['error_correction']['e_0']
-eps_sec = config['security']['eps_sec']
-eps_cor = config['security']['eps_cor']
-N = config['system']['N']
-Lambda = config['system']['Lambda']
+eta_d = float(config['detection']['eta_d'])
+Y_0 = float(config['detection']['Y_0'])
+e_d = float(config['detection']['e_d'])
+alpha = float(config['fiber']['alpha'])
+zeta = float(config['error_correction']['zeta'])
+e_0 = float(config['error_correction']['e_0'])
+eps_sec = float(config['security']['eps_sec'])
+eps_cor = float(config['security']['eps_cor'])
+N = float(config['system']['N'])
+Lambda = config['system']['Lambda']  # None일 수 있음
 
 # 광섬유 길이 L 사용자 입력
 L = 100
@@ -54,35 +45,11 @@ import random
 random.seed(42)
 np.random.seed(42)
 
-def normalize_p(vec):
-    """벡터를 정규화하는 함수"""
-    copy_vec = vec[:].copy()
-    sum_vec = np.sum(copy_vec[3:6])
-    copy_vec[3:6] /= sum_vec
-    return copy_vec
-
-def h(x):
-    """이진 엔트로피 함수"""
-    return -x * np.log2(x) - (1 - x)*np.log2(1 - x)
-
 def define_ga(co_type, mu_type, sel_type, 
               gen = 200,
               num_parents_mating = 60, sol_per_pop = 200, keep_parents = 50, keep_elitism = 10, K_tournament = 8, crossover_probability = 0.8, mutation_probability = 0.02, mutation_percent_genes = "default",
-              make_df = False, df = None, random_seed = 42):
+              random_seed = 42):
     """유전 알고리즘 인스턴스를 정의하는 함수"""
-
-    def append_df(ga_instance, _):
-        nonlocal df  
-        if df is not None:
-            data = dict(zip(['mu', 'nu', 'vac', 'p_mu', 'p_nu', 'p_vac', 'p_x', 'q_x'], normalize_p(ga_instance.best_solution()[0])))
-            data['SKR'] = ga_instance.best_solution()[1]
-            data['L'] = L
-            df.loc[len(df)] = data
-
-    if make_df == True : 
-        on_stop = append_df
-    if make_df == False :
-        on_stop = None
     
     ga_instance = pygad.GA(num_generations = gen,   #(논문 : 최대 1000)                    # 세대 수
                     num_parents_mating = num_parents_mating,   #(논문 : 30)               # 부모로 선택될 솔루션의 수
@@ -123,7 +90,7 @@ def define_ga(co_type, mu_type, sel_type,
                     on_crossover = None,                                                 # 교차 연산이 적용될 때마다 호출될 함수
                     on_mutation = None,                                                  # 돌연변이 연산이 적용될 때마다 호출될 함수
                     on_generation = None,                                                # 각 세대마다 호출될 함수
-                    on_stop = on_stop,                                                   # 유전 알고리즘이 종료되기 바로 전이나 모든 세대가 완료될 때 한번만 호출되는 함수
+                    on_stop = None,                                                      # 유전 알고리즘이 종료되기 바로 전이나 모든 세대가 완료될 때 한번만 호출되는 함수
 
                     save_best_solutions = True,                                          # True인 경우 각 세대 이후 best_solution에 최적해 저장
                     save_solutions = True,                                               # 각 세대의 모든 해는 solution에 저장
@@ -139,52 +106,6 @@ def define_ga(co_type, mu_type, sel_type,
                     logger = None                                                        # logger 허용
                     )
     return ga_instance
-
-# 참조 데이터 (YAML에서 로드)
-ref = config['reference']['skr_values']
-
-def plot_SKR(skr_list, title = '  ', save = False):
-    """SKR 결과를 시각화하는 함수"""
-    plt.figure(figsize=(10, 6))
-
-    x_ga = np.arange(0, len(skr_list) * 5, 5)  
-    x_ref = np.arange(0, len(ref) * 10, 10)               
-
-    plt.plot(x_ga, skr_list, marker='o', color='blue', label='ga')
-    plt.plot(x_ref, ref, marker='s', color='red', label='ref')
-    plt.yscale('log')
-    plt.legend()
-
-    texts = []
-    for x, ga in zip(x_ga, skr_list):
-        texts.append(plt.text(x, ga, f'{ga:.1e}', fontsize=8, color='blue'))
-
-    for x, r in zip(x_ref, ref):
-        texts.append(plt.text(x, r, f'{r:.1e}', fontsize=8, color='red'))
-
-    adjust_text(texts,
-                arrowprops=dict(arrowstyle='-', color='gray', lw=0.5)
-    )
-
-    plt.xlabel('L')
-    plt.ylabel('SKR')
-
-    max_x = max(x_ga[-1], x_ref[-1])
-    plt.xticks(np.arange(0, max_x + 1, 10))
-
-    plt.title(f'SKR Comparison\n{title}')
-    plt.grid(True, which="both", ls="--", linewidth=0.5)
-    plt.tight_layout()
-
-    if save == True : 
-        plt.savefig(f'{title}.png')
-    
-    plt.show()
-
-def make_df():
-    """데이터프레임을 생성하는 함수"""
-    df = pd.DataFrame(columns=['L', 'mu', 'nu', 'vac', 'p_mu', 'p_nu', 'p_vac', 'p_x', 'q_x', 'SKR'])
-    return df
 
 num_iter = 1
 
@@ -227,8 +148,6 @@ def objective(trial):
                        crossover_probability=crossover_probability,
                        mutation_probability=mutation_probability,
                        mutation_percent_genes=mutation_percent_genes,
-                       make_df=False,
-                       df=None,
                        random_seed=42)
 
         ga.run()
@@ -270,9 +189,7 @@ def run_optimization():
     return study
 
 def run_final_ga(study):
-    """최적화된 하이퍼파라미터로 최종 GA를 실행하는 함수 - L=100 고정"""
-    df = make_df()
-    
+    """최적화된 하이퍼파라미터로 최종 GA를 실행하는 함수"""
     num_iter = 1
 
     print(f"L={L}에서 최적화된 하이퍼파라미터로 GA를 실행합니다...")
@@ -289,14 +206,11 @@ def run_final_ga(study):
                                 crossover_probability = study.best_trial.params['crossover_probability'], 
                                 mutation_probability = None,
                                 mutation_percent_genes = study.best_trial.params['mutation_percent_genes'], 
-                                make_df = True, df = df, random_seed = 42)
+                                random_seed = 42)
         ga_instance.run()
         solution, solution_fitness, solution_idx = ga_instance.best_solution()
 
-    # L=100에서의 SKR 값만 반환
-    skr_value = df['SKR'].iloc[0] if len(df) > 0 else 0
-    
-    return skr_value, solution, solution_fitness, solution_idx
+    return solution_fitness, solution, solution_fitness, solution_idx
 
 def main():
     """메인 실행 함수 - L=100 특화, 최적화된 하이퍼파라미터를 초기값으로 사용"""
@@ -307,7 +221,6 @@ def main():
     print("=" * 60)
     print(f"CPU 코어 수: {CPU_COUNT}")
     print(f"광섬유 길이 L: {L}")
-    print(f"병렬처리: 최대 8개 스레드")
     print("=" * 60)
     
     print(f"\nL={L}에서 Optuna를 사용한 하이퍼파라미터 최적화를 시작합니다...")
