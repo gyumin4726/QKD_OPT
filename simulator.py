@@ -28,7 +28,7 @@ def normalize_p(vec) :
 def h(x) :
     return -x * np.log2(x) - (1 - x)*np.log2(1 - x)
 
-def rl_simulator(ga_instance, solution, solution_idx) :
+def rl_simulator(_, solution, __) :
     """SKR(Secret Key Rate) 계산 함수"""
     sol = normalize_p(solution)
     mu, nu, vac, p_mu, p_nu, p_vac, p_X, q_X = sol

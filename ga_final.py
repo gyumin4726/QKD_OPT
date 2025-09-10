@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
 from adjustText import adjust_text
 
 import sys
@@ -11,8 +10,6 @@ import pygad
 import time
 
 from tqdm import tqdm
-
-from itertools import product
 
 import optuna
 
@@ -74,7 +71,7 @@ def define_ga(co_type, mu_type, sel_type,
               make_df = False, df = None, random_seed = 42):
     """유전 알고리즘 인스턴스를 정의하는 함수"""
 
-    def append_df(ga_instance, last_gen_fitness):
+    def append_df(ga_instance, _):
         nonlocal df  
         if df is not None:
             data = dict(zip(['mu', 'nu', 'vac', 'p_mu', 'p_nu', 'p_vac', 'p_x', 'q_x'], normalize_p(ga_instance.best_solution()[0])))
@@ -189,7 +186,6 @@ def make_df():
     df = pd.DataFrame(columns=['L', 'mu', 'nu', 'vac', 'p_mu', 'p_nu', 'p_vac', 'p_x', 'q_x', 'SKR'])
     return df
 
-# Optuna를 사용한 하이퍼파라미터 최적화 - L=100 고정
 num_iter = 1
 
 def objective(trial):
@@ -333,7 +329,6 @@ def main():
     print(f"{'='*60}")
     print(f"최적 SKR 값: {skr_value:.6e}")
     print(f"최적 솔루션: {solution}")
-    print(f"최적 적합도: {solution_fitness}")
     print(f"총 실행 시간: {total_time:.2f}초")
     print(f" - Optuna 최적화: {opt_time:.2f}초 ({opt_time/total_time*100:.1f}%)")
     print(f" - GA 실행: {ga_time:.2f}초 ({ga_time/total_time*100:.1f}%)")
