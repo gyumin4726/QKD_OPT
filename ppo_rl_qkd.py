@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from simulator import rl_simulator
+from simulator import skr_simulator
 
 # GPU 사용 설정
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -54,7 +54,7 @@ class QKDRLEnv:
         self.state = next_state
         
         # 보상 계산
-        reward = 10e5*rl_simulator(None, self.state, 0)
+        reward = 10e5*skr_simulator(None, self.state, 0)
         done = False # 에피소드 종료 조건 없음
         return self.state.copy(), reward, done, {}
         

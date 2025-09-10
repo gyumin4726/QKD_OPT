@@ -1,5 +1,4 @@
 import numpy as np
-import pandas as pd
 import os
 import pygad
 import time
@@ -10,8 +9,8 @@ import yaml
 import warnings
 warnings.filterwarnings('ignore')
 
-# RL 시뮬레이터 import
-from simulator import rl_simulator, normalize_p
+# SKR 시뮬레이터 import
+from simulator import skr_simulator
 
 # 설정 파일 로드
 with open('config.yaml', 'r', encoding='utf-8') as file:
@@ -27,7 +26,7 @@ e_0 = float(config['error_correction']['e_0'])
 eps_sec = float(config['security']['eps_sec'])
 eps_cor = float(config['security']['eps_cor'])
 N = float(config['system']['N'])
-Lambda = config['system']['Lambda']  # None일 수 있음
+Lambda = config['system']['Lambda']
 
 # 광섬유 길이 L 사용자 입력
 L = 100
@@ -49,12 +48,13 @@ def define_ga(co_type, mu_type, sel_type,
               gen = 200,
               num_parents_mating = 60, sol_per_pop = 200, keep_parents = 50, keep_elitism = 10, K_tournament = 8, crossover_probability = 0.8, mutation_probability = 0.02, mutation_percent_genes = "default",
               random_seed = 42):
+
     """유전 알고리즘 인스턴스를 정의하는 함수"""
     
     ga_instance = pygad.GA(num_generations = gen,   #(논문 : 최대 1000)                    # 세대 수
                     num_parents_mating = num_parents_mating,   #(논문 : 30)               # 부모로 선택될 솔루션의 수
 
-                    fitness_func = rl_simulator,
+                    fitness_func = skr_simulator,
                     fitness_batch_size = None,                                           # 배치 단위로 적합도 함수를 계산, 적합도 함수는 각 배치에 대해 한 번씩 호출
 
                     initial_population = None,                                           # 사용자 정의 초기 개체군, num_genes와 크기가 같아야 함
@@ -110,7 +110,7 @@ def define_ga(co_type, mu_type, sel_type,
 num_iter = 1
 
 def objective(trial):
-    """Optuna 최적화 목적 함수 - L=100 고정"""
+    """Optuna 최적화 목적 함수"""
     total_fitness = 0
     
     crossover_type = trial.suggest_categorical("crossover_type", ["single_point", "two_points", "uniform", "scattered"])
@@ -134,7 +134,7 @@ def objective(trial):
     # tournament
     K_tournament = trial.suggest_int("K_tournament", 2, int(num_parents_mating * 0.7)) if parent_selection_type == "tournament" else None
 
-    # L=100으로 고정하여 최적화
+    # 고정된 L에 대하여 최적화
     for _ in range(num_iter):
         ga = define_ga(co_type=crossover_type,
                        mu_type=mutation_type,

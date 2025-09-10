@@ -15,7 +15,7 @@ e_0 = float(config['error_correction']['e_0'])
 eps_sec = float(config['security']['eps_sec'])
 eps_cor = float(config['security']['eps_cor'])
 N = float(config['system']['N'])
-Lambda = config['system']['Lambda']  # None일 수 있음
+Lambda = config['system']['Lambda']
 
 # 파생 상수
 eps = eps_sec/23
@@ -23,7 +23,6 @@ beta = np.log(1/eps)
 
 # L은 전역 변수로 설정
 L = 100
-
 
 def normalize_p(vec):
     """벡터를 정규화하는 함수"""
@@ -36,7 +35,7 @@ def h(x):
     """이진 엔트로피 함수"""
     return -x * np.log2(x) - (1 - x)*np.log2(1 - x)
 
-def rl_simulator(_, solution, __) :
+def skr_simulator(_, solution, __) :
     """SKR(Secret Key Rate) 계산 함수"""
     sol = normalize_p(solution)
     mu, nu, vac, p_mu, p_nu, p_vac, p_X, q_X = sol

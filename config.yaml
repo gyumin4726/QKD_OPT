@@ -1,5 +1,4 @@
 # QKD 파라미터 설정 파일
-# Quantum Key Distribution Configuration
 
 # Detection parameters
 detection:
@@ -10,7 +9,6 @@ detection:
 # Fiber parameters
 fiber:
   alpha: 0.21                     # attenuation coefficient of single-mode fiber
-  # L: 100                        # fiber length (0~110) - 사용자 입력으로 변경됨
 
 # Error correction parameters
 error_correction:

@@ -1,13 +1,12 @@
 import numpy as np
-import pandas as pd
 import pygad
 import yaml
 
 import warnings
 warnings.filterwarnings('ignore')
 
-# RL 시뮬레이터 import
-from simulator import rl_simulator, normalize_p
+# SKR 시뮬레이터 import
+from simulator import skr_simulator, normalize_p
 
 # 설정 파일 로드
 with open('config.yaml', 'r', encoding='utf-8') as file:
@@ -23,7 +22,7 @@ e_0 = float(config['error_correction']['e_0'])
 eps_sec = float(config['security']['eps_sec'])
 eps_cor = float(config['security']['eps_cor'])
 N = float(config['system']['N'])
-Lambda = config['system']['Lambda']  # None일 수 있음
+Lambda = config['system']['Lambda'] 
 
 # 파생 상수
 eps = eps_sec/23
@@ -50,7 +49,7 @@ def define_ga(co_type, mu_type, sel_type,
     ga_instance = pygad.GA(num_generations = gen,   #(논문 : 최대 1000)                    # 세대 수
                     num_parents_mating = num_parents_mating,   #(논문 : 30)               # 부모로 선택될 솔루션의 수
 
-                    fitness_func = rl_simulator,
+                    fitness_func = skr_simulator,
                     fitness_batch_size = None,                                           # 배치 단위로 적합도 함수를 계산, 적합도 함수는 각 배치에 대해 한 번씩 호출
 
                     initial_population = None,                                           # 사용자 정의 초기 개체군, num_genes와 크기가 같아야 함
