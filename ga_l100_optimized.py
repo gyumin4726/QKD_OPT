@@ -247,14 +247,14 @@ def run_optimized_ga():
     
 
     optimized_params = {
-        'crossover_type': 'two_points',
+        'crossover_type': 'single_point',
         'mutation_type': 'adaptive',
-        'parent_selection_type': 'tournament',
-        'sol_per_pop': 94,
-        'num_parents_mating': 18,
-        'keep_parents': 8,
-        'keep_elitism': 10,
-        'crossover_probability': 0.6400780417119777,
+        'parent_selection_type': 'sss',
+        'sol_per_pop': 102,
+        'num_parents_mating': 22,
+        'keep_parents': 21,
+        'keep_elitism': 9,
+        'crossover_probability': 0.6509333611086074,
         'mutation_percent_genes': [0.5, 0.05]
     }
 
@@ -273,7 +273,7 @@ def run_optimized_ga():
         co_type=optimized_params['crossover_type'],
         mu_type=optimized_params['mutation_type'],
         sel_type=optimized_params['parent_selection_type'],
-        gen=200,
+        gen = 200,
         num_parents_mating=optimized_params['num_parents_mating'],
         sol_per_pop=optimized_params['sol_per_pop'],
         keep_parents=optimized_params['keep_parents'],

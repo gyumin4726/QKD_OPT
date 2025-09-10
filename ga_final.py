@@ -317,7 +317,6 @@ def objective(trial):
     K_tournament = trial.suggest_int("K_tournament", 2, int(num_parents_mating * 0.7)) if parent_selection_type == "tournament" else None
 
     # L=100으로 고정하여 최적화
-    L_fixed = 100
     for _ in range(num_iter):
         ga = define_ga(co_type=crossover_type,
                        mu_type=mutation_type,
@@ -351,23 +350,22 @@ def run_optimization():
     
     # 최적화된 하이퍼파라미터를 초기 시도로 추가
     initial_params = {
-        'crossover_type': 'two_points',
+        'crossover_type': 'single_point',
         'mutation_type': 'adaptive',
-        'parent_selection_type': 'tournament',
-        'sol_per_pop': 94,
-        'num_parents_mating': 18,
-        'keep_parents': 8,
-        'keep_elitism': 10,
-        'crossover_probability': 0.6500780417119777,
-        'mutation_percent_genes': [0.5, 0.05],
-        'K_tournament': 8,
+        'parent_selection_type': 'sss',
+        'sol_per_pop': 102,
+        'num_parents_mating': 22,
+        'keep_parents': 21,
+        'keep_elitism': 9,
+        'crossover_probability': 0.6509333611086074,
+        'mutation_percent_genes': [0.5, 0.05]
     }
     
     # 초기 시도를 study에 추가
     study.enqueue_trial(initial_params)
     print("최적화된 하이퍼파라미터를 초기 시도로 추가했습니다.")
     
-    study.optimize(objective, n_trials=100, n_jobs=1)
+    study.optimize(objective, n_trials=1, n_jobs=1)
 
     print("Best trial:")
     print(study.best_trial)
@@ -378,11 +376,9 @@ def run_final_ga(study):
     """최적화된 하이퍼파라미터로 최종 GA를 실행하는 함수 - L=100 고정"""
     df = make_df()
     
-    # L=100으로 고정
-    L_fixed = 100
     num_iter = 1
 
-    print(f"L={L_fixed}에서 최적화된 하이퍼파라미터로 GA를 실행합니다...")
+    print(f"L={L}에서 최적화된 하이퍼파라미터로 GA를 실행합니다...")
     
     for i in tqdm(range(num_iter)) : 
         ga_instance = define_ga(co_type = study.best_trial.params['crossover_type'], 
@@ -416,7 +412,7 @@ def main():
     print(f"병렬처리: 최대 8개 스레드")
     print("=" * 60)
     
-    print("\nL=100에서 Optuna를 사용한 하이퍼파라미터 최적화를 시작합니다...")
+    print("\nL={L}에서 Optuna를 사용한 하이퍼파라미터 최적화를 시작합니다...")
     opt_start = time.time()
     study = run_optimization()
     opt_time = time.time() - opt_start
