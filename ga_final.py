@@ -31,6 +31,9 @@ Lambda = config['system']['Lambda']
 # 광섬유 길이 L 사용자 입력
 L = 100
 
+import simulator
+simulator.L = L
+
 # 파생 상수
 eps = eps_sec/23
 beta = np.log(1/eps)
