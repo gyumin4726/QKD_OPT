@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from simulator import skr_simulator
+import simulator
 
 # GPU 사용 설정
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -16,13 +17,16 @@ else:
     print("GPU를 사용할 수 없습니다. CPU를 사용합니다.")
     print("CPU 모드로 실행합니다.")
 
+L = 110
+simulator.L = L
+
 # 환경 정의
 class QKDRLEnv:
     def __init__(self):
         # 기준이 될 초기값 (ga로 찾은 최적 파라미터)
         # vaccum이 0이 아님.
         # mu, nu, vac, p_mu, p_nu, p_vac, p_X, q_X
-        initial_state = np.array([0.853611, 0.181233, 0.139356, 0.016267, 0.867896, 0.115837, 0.131875, 0.107291])
+        initial_state = np.array([0.85019, 0.181233, 0.139356, 0.017191, 0.997255, 0.136384, 0.132764, 0.110706])
 
         self.initial_state = initial_state.copy() 
         
