@@ -29,7 +29,7 @@ eps = eps_sec/23
 beta = np.log(1/eps)
 
 # L은 직접 설정
-L = 100
+L = 110
 
 # simulator.py의 L 값 업데이트
 import simulator
@@ -106,15 +106,16 @@ def run_optimized_ga():
     """최적화된 하이퍼파라미터로 L=100에서 GA를 실행하는 함수"""
 
     optimized_params = {
-        'crossover_type': 'single_point',
+        'crossover_type': 'scattered',
         'mutation_type': 'adaptive',
-        'parent_selection_type': 'sss',
-        'sol_per_pop': 102,
-        'num_parents_mating': 22,
-        'keep_parents': 21,
-        'keep_elitism': 9,
-        'crossover_probability': 0.6509333611086074,
-        'mutation_percent_genes': [0.5, 0.05]
+        'parent_selection_type': 'tournament',
+        'sol_per_pop': 184,
+        'num_parents_mating': 182,
+        'keep_parents': 31,
+        'keep_elitism': 5,
+        'crossover_probability': 0.7424196468510602,
+        'mutation_percent_genes': [0.5, 0.05],
+        'K_tournament': 35
     }
 
     print(f"=== L={L}에서 최적화된 하이퍼파라미터로 GA 실행 ===")
@@ -137,6 +138,7 @@ def run_optimized_ga():
         crossover_probability=optimized_params['crossover_probability'],
         mutation_probability=None,  # adaptive mutation 사용
         mutation_percent_genes=optimized_params['mutation_percent_genes'],
+        K_tournament=optimized_params['K_tournament'],
         random_seed=42
     )
     

@@ -29,7 +29,7 @@ N = float(config['system']['N'])
 Lambda = config['system']['Lambda']
 
 # 광섬유 길이 L 사용자 입력
-L = 100
+L = 110
 
 import simulator
 simulator.L = L
@@ -169,15 +169,16 @@ def run_optimization():
     
     # 최적화된 하이퍼파라미터를 초기 시도로 추가
     initial_params = {
-        'crossover_type': 'single_point',
+        'crossover_type': 'scattered',
         'mutation_type': 'adaptive',
-        'parent_selection_type': 'sss',
-        'sol_per_pop': 102,
-        'num_parents_mating': 22,
-        'keep_parents': 21,
-        'keep_elitism': 9,
-        'crossover_probability': 0.6509333611086074,
-        'mutation_percent_genes': [0.5, 0.05]
+        'parent_selection_type': 'tournament',
+        'sol_per_pop': 184,
+        'num_parents_mating': 182,
+        'keep_parents': 31,
+        'keep_elitism': 5,
+        'crossover_probability': 0.7424196468510602,
+        'mutation_percent_genes': [0.5, 0.05],
+        'K_tournament': 35
     }
     
     # 초기 시도를 study에 추가
@@ -209,6 +210,7 @@ def run_final_ga(study):
                                 crossover_probability = study.best_trial.params['crossover_probability'], 
                                 mutation_probability = None,
                                 mutation_percent_genes = study.best_trial.params['mutation_percent_genes'], 
+                                K_tournament = study.best_trial.params['K_tournament'],
                                 random_seed = 42)
         ga_instance.run()
         solution, solution_fitness, solution_idx = ga_instance.best_solution()

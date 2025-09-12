@@ -22,7 +22,7 @@ eps = eps_sec/23
 beta = np.log(1/eps)
 
 # L은 전역 변수로 설정
-L = 100
+L = 110
 
 def normalize_p(vec):
     """벡터를 정규화하는 함수"""
