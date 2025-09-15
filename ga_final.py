@@ -13,7 +13,7 @@ warnings.filterwarnings('ignore')
 from simulator import skr_simulator
 
 # 설정 파일 로드
-with open('config.yaml', 'r', encoding='utf-8') as file:
+with open('config/config.yaml', 'r', encoding='utf-8') as file:
     config = yaml.safe_load(file)
 
 # 상수 정의 (YAML에서 로드)

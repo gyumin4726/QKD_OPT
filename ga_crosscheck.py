@@ -9,7 +9,7 @@ warnings.filterwarnings('ignore')
 from simulator import skr_simulator, normalize_p
 
 # 설정 파일 로드
-with open('config_crosscheck.yaml', 'r', encoding='utf-8') as file:
+with open('config/config_crosscheck.yaml', 'r', encoding='utf-8') as file:
     config = yaml.safe_load(file)
 
 # 상수 정의 (YAML에서 로드)
@@ -29,7 +29,7 @@ eps = eps_sec/23
 beta = np.log(1/eps)
 
 # L은 직접 설정
-L = 20
+L = 100
 
 # simulator.py의 L 값 업데이트
 import simulator

@@ -8,7 +8,7 @@ from ga_final import define_ga, skr_simulator
 import simulator
 
 class QKDDataGenerator:
-    def __init__(self, config_path='config.yaml'):
+    def __init__(self, config_path='config/config.yaml'):
         """QKD 학습 데이터 생성기"""
         # 설정 파일 로드
         with open(config_path, 'r', encoding='utf-8') as file:

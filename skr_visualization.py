@@ -4,7 +4,7 @@ import yaml
 
 def load_config():
     """config.yaml 파일에서 설정을 로드합니다."""
-    with open('config.yaml', 'r', encoding='utf-8') as file:
+    with open('config/config.yaml', 'r', encoding='utf-8') as file:
         config = yaml.safe_load(file)
     return config
 
