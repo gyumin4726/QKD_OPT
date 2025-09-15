@@ -105,6 +105,9 @@ class QKDDataGenerator:
         # 시뮬레이터에 파라미터 설정
         simulator.L = input_params['L']
         
+        import random
+        random.seed(42) 
+        np.random.seed(42)
         # 최적화된 GA 설정 (README.md에서 가져온 설정)
         ga = define_ga(
             co_type='single_point',
@@ -240,7 +243,7 @@ if __name__ == "__main__":
     print("테스트 데이터셋 생성 중...")
     test_dataset = generator.generate_dataset(
         n_samples=10,  # 테스트용으로 작은 수
-        max_generations=20,  # 빠른 테스트를 위해 세대 수 줄임
+        max_generations=100,  # 빠른 테스트를 위해 세대 수 줄임
         save_path='test_qkd_dataset.csv'
     )
     

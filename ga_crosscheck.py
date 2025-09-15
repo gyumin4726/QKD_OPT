@@ -9,7 +9,7 @@ warnings.filterwarnings('ignore')
 from simulator import skr_simulator, normalize_p
 
 # 설정 파일 로드
-with open('config.yaml', 'r', encoding='utf-8') as file:
+with open('config_crosscheck.yaml', 'r', encoding='utf-8') as file:
     config = yaml.safe_load(file)
 
 # 상수 정의 (YAML에서 로드)
@@ -29,7 +29,7 @@ eps = eps_sec/23
 beta = np.log(1/eps)
 
 # L은 직접 설정
-L = 110
+L = 20
 
 # simulator.py의 L 값 업데이트
 import simulator
@@ -41,7 +41,7 @@ random.seed(42)
 np.random.seed(42)
 
 def define_ga(co_type, mu_type, sel_type, 
-              gen = 200,
+              gen = 100,
               num_parents_mating = 60, sol_per_pop = 200, keep_parents = 50, keep_elitism = 10, K_tournament = 8, crossover_probability = 0.8, mutation_probability = 0.02, mutation_percent_genes = "default",
               random_seed = 42):
     """유전 알고리즘 인스턴스를 정의하는 함수"""
@@ -106,16 +106,15 @@ def run_optimized_ga():
     """최적화된 하이퍼파라미터로 L=100에서 GA를 실행하는 함수"""
 
     optimized_params = {
-        'crossover_type': 'scattered',
+        'crossover_type': 'single_point',
         'mutation_type': 'adaptive',
-        'parent_selection_type': 'tournament',
-        'sol_per_pop': 184,
-        'num_parents_mating': 182,
-        'keep_parents': 31,
-        'keep_elitism': 5,
-        'crossover_probability': 0.7424196468510602,
-        'mutation_percent_genes': [0.5, 0.05],
-        'K_tournament': 35
+        'parent_selection_type': 'sss',
+        'sol_per_pop': 102,
+        'num_parents_mating': 22,
+        'keep_parents': 21,
+        'keep_elitism': 9,
+        'crossover_probability': 0.6509333611086074,
+        'mutation_percent_genes': [0.5, 0.05]
     }
 
     print(f"=== L={L}에서 최적화된 하이퍼파라미터로 GA 실행 ===")
@@ -130,7 +129,7 @@ def run_optimized_ga():
         co_type=optimized_params['crossover_type'],
         mu_type=optimized_params['mutation_type'],
         sel_type=optimized_params['parent_selection_type'],
-        gen = 200,
+        gen = 100,
         num_parents_mating=optimized_params['num_parents_mating'],
         sol_per_pop=optimized_params['sol_per_pop'],
         keep_parents=optimized_params['keep_parents'],
@@ -138,7 +137,7 @@ def run_optimized_ga():
         crossover_probability=optimized_params['crossover_probability'],
         mutation_probability=None,  # adaptive mutation 사용
         mutation_percent_genes=optimized_params['mutation_percent_genes'],
-        K_tournament=optimized_params['K_tournament'],
+        #K_tournament=optimized_params['K_tournament'],
         random_seed=42
     )
     
