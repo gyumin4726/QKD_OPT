@@ -4,11 +4,11 @@ import pandas as pd
 from tqdm import tqdm
 import os
 import pickle
-from ga_final import define_ga, skr_simulator
-import simulator
+from ga_final import define_ga
+from simulator import skr_simulator
 
 class QKDDataGenerator:
-    def __init__(self, config_path='config/config.yaml'):
+    def __init__(self, config_path='config/config_crosscheck.yaml'):
         """QKD 학습 데이터 생성기"""
         # 설정 파일 로드
         with open(config_path, 'r', encoding='utf-8') as file:
@@ -102,12 +102,14 @@ class QKDDataGenerator:
     
     def optimize_parameters(self, input_params, max_generations=100):
         """주어진 입력 파라미터에 대해 GA로 최적 파라미터 찾기"""
-        # 시뮬레이터에 파라미터 설정
-        simulator.L = input_params['L']
-        
         import random
         random.seed(42) 
         np.random.seed(42)
+        
+        # PyGAD용 래퍼 함수 - 개별 파라미터를 직접 전달
+        def skr_fitness_wrapper(ga_instance, solution, solution_idx):
+            return skr_simulator(ga_instance, solution, solution_idx, **input_params)
+        
         # 최적화된 GA 설정 (README.md에서 가져온 설정)
         ga = define_ga(
             co_type='single_point',
@@ -122,7 +124,8 @@ class QKDDataGenerator:
             crossover_probability=0.6509333611086074,
             mutation_probability=None,  # adaptive mutation 사용
             mutation_percent_genes=[0.5, 0.05],
-            random_seed=42
+            random_seed=42,
+            fitness_func=skr_fitness_wrapper  # 래퍼 함수 사용
         )
         
         # GA 실행
@@ -130,7 +133,7 @@ class QKDDataGenerator:
         solution, solution_fitness, solution_idx = ga.best_solution()
         
         # SKR 계산
-        skr_value = skr_simulator(None, solution, 0)
+        skr_value = skr_simulator(None, solution, 0, **input_params)
         
         return {
             'optimal_params': solution.tolist(),
@@ -242,7 +245,7 @@ if __name__ == "__main__":
     # 작은 데이터셋으로 테스트
     print("테스트 데이터셋 생성 중...")
     test_dataset = generator.generate_dataset(
-        n_samples=10,  # 테스트용으로 작은 수
+        n_samples=2,  # 테스트용으로 작은 수
         max_generations=100,  # 빠른 테스트를 위해 세대 수 줄임
         save_path='test_qkd_dataset.csv'
     )

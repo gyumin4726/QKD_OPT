@@ -6,39 +6,24 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # SKR 시뮬레이터 import
-from simulator import skr_simulator, normalize_p
-
-# 설정 파일 로드
-with open('config/config_crosscheck.yaml', 'r', encoding='utf-8') as file:
-    config = yaml.safe_load(file)
-
-# 상수 정의 (YAML에서 로드)
-eta_d = float(config['detection']['eta_d'])
-Y_0 = float(config['detection']['Y_0'])
-e_d = float(config['detection']['e_d'])
-alpha = float(config['fiber']['alpha'])
-zeta = float(config['error_correction']['zeta'])
-e_0 = float(config['error_correction']['e_0'])
-eps_sec = float(config['security']['eps_sec'])
-eps_cor = float(config['security']['eps_cor'])
-N = float(config['system']['N'])
-Lambda = config['system']['Lambda'] 
-
-# 파생 상수
-eps = eps_sec/23
-beta = np.log(1/eps)
+from simulator import skr_simulator, normalize_p, QKDSimulatorConfig
 
 # L은 직접 설정
-L = 100
+L = 20
 
-# simulator.py의 L 값 업데이트
-import simulator
-simulator.L = L
+# 설정 객체 생성 (YAML에서 자동 로드)
+simulator_config = QKDSimulatorConfig.from_yaml('config/config_crosscheck.yaml')
+simulator_config.L = L  # L 값만 별도로 설정
 
 # 재현 가능한 결과를 위한 시드 설정
 import random
 random.seed(42)
 np.random.seed(42)
+
+# PyGAD용 래퍼 함수 (고정된 시그니처 필요)
+def skr_fitness_wrapper(ga_instance, solution, solution_idx):
+    """PyGAD용 SKR 적합도 함수 래퍼"""
+    return skr_simulator(ga_instance, solution, solution_idx, simulator_config)
 
 def define_ga(co_type, mu_type, sel_type, 
               gen = 100,
@@ -49,7 +34,7 @@ def define_ga(co_type, mu_type, sel_type,
     ga_instance = pygad.GA(num_generations = gen,   #(논문 : 최대 1000)                    # 세대 수
                     num_parents_mating = num_parents_mating,   #(논문 : 30)               # 부모로 선택될 솔루션의 수
 
-                    fitness_func = skr_simulator,
+                    fitness_func = skr_fitness_wrapper,
                     fitness_batch_size = None,                                           # 배치 단위로 적합도 함수를 계산, 적합도 함수는 각 배치에 대해 한 번씩 호출
 
                     initial_population = None,                                           # 사용자 정의 초기 개체군, num_genes와 크기가 같아야 함
@@ -164,16 +149,14 @@ def main():
     print()
     
     print("최적 파라미터 값:")
-    # 정규화된 솔루션 출력
-    normalized_solution = normalize_p(solution)
-    print(f"  mu: {normalized_solution[0]:.6f}")
-    print(f"  nu: {normalized_solution[1]:.6f}")
-    print(f"  vac: {normalized_solution[2]:.6f}")
-    print(f"  p_mu: {normalized_solution[3]:.6f}")
-    print(f"  p_nu: {normalized_solution[4]:.6f}")
-    print(f"  p_vac: {normalized_solution[5]:.6f}")
-    print(f"  p_x: {normalized_solution[6]:.6f}")
-    print(f"  q_x: {normalized_solution[7]:.6f}")
+    print(f"  mu: {solution[0]:.6f}")
+    print(f"  nu: {solution[1]:.6f}")
+    print(f"  vac: {solution[2]:.6f}")
+    print(f"  p_mu: {solution[3]:.6f}")
+    print(f"  p_nu: {solution[4]:.6f}")
+    print(f"  p_vac: {solution[5]:.6f}")
+    print(f"  p_x: {solution[6]:.6f}")
+    print(f"  q_x: {solution[7]:.6f}")
     
 
 if __name__ == "__main__":
