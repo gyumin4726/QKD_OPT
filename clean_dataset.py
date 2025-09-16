@@ -7,16 +7,19 @@ import pandas as pd
 import numpy as np
 
 def clean_dataset(input_file='test_qkd_dataset.csv', output_file='test_qkd_dataset_cleaned.csv'):
-    """SKR이 -1인 행들을 제거"""
+    """SKR이 -1부터 -10까지의 행들을 제거"""
     
     print(f"데이터셋 로드 중: {input_file}")
     df = pd.read_csv(input_file)
     
     print(f"원본 데이터 크기: {len(df)} 행")
-    print(f"SKR이 -1인 행 수: {len(df[df['skr'] == -1])}")
     
-    # SKR이 -1이 아닌 행들만 유지
-    df_cleaned = df[df['skr'] != -1].copy()
+    # SKR이 -1부터 -10까지인 행들 확인
+    invalid_skr_mask = (df['skr'] >= -10) & (df['skr'] <= -1)
+    print(f"SKR이 -1부터 -10까지인 행 수: {len(df[invalid_skr_mask])}")
+    
+    # SKR이 -1부터 -10까지가 아닌 행들만 유지
+    df_cleaned = df[~invalid_skr_mask].copy()
     
     print(f"정리된 데이터 크기: {len(df_cleaned)} 행")
     print(f"제거된 행 수: {len(df) - len(df_cleaned)}")
