@@ -245,7 +245,7 @@ if __name__ == "__main__":
     # 작은 데이터셋으로 테스트
     print("테스트 데이터셋 생성 중...")
     test_dataset = generator.generate_dataset(
-        n_samples=2,  # 테스트용으로 작은 수
+        n_samples=1000,  # 테스트용으로 작은 수
         max_generations=100,  # 빠른 테스트를 위해 세대 수 줄임
         save_path='test_qkd_dataset.csv'
     )
