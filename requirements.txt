@@ -61,4 +61,5 @@ tqdm==4.67.1
 traitlets==5.14.3
 typing_extensions==4.15.0
 tzdata==2025.2
+scikit-learn==1.7.2
 wcwidth==0.2.13
