@@ -19,6 +19,16 @@ import random
 import os
 warnings.filterwarnings('ignore')
 
+# 훈련 설정 - 핵심 하이퍼파라미터 관리
+TRAINING_CONFIG = {
+    'epochs': 120,
+    'batch_size': 64,
+    'learning_rate': 0.001,
+    'weight_decay': 1e-5,
+    'dropout_rate': 0.1,
+    'loss_scaling': 100
+}
+
 def set_seed(seed=42):
     """모든 랜덤성 소스에 대해 시드를 고정하여 재현 가능한 결과 보장"""
     print(f"시드 고정: {seed}")
@@ -49,8 +59,12 @@ class QKDDataset(Dataset):
 
 class QKDMLP(nn.Module):
     """QKD 파라미터 최적화를 위한 MLP 신경망 (논문 구조)"""
-    def __init__(self, input_size=10, hidden_sizes=[512, 256, 128], output_size=9, dropout_rate=0.1):
+    def __init__(self, input_size=10, hidden_sizes=[512, 256, 128], output_size=9, dropout_rate=None):
         super(QKDMLP, self).__init__()
+        
+        # dropout_rate가 None이면 설정값 사용
+        if dropout_rate is None:
+            dropout_rate = TRAINING_CONFIG['dropout_rate']
         
         # 입력층
         self.input_layer = nn.Linear(input_size, hidden_sizes[0])
@@ -91,16 +105,24 @@ class QKDMLP(nn.Module):
 class QKDMLPTrainer:
     """QKD MLP 훈련 및 평가를 위한 클래스"""
     
-    def __init__(self, config_path='config/config.yaml'):
+    def __init__(self, config=None):
+        """훈련기 초기화"""
+        if config is None:
+            config = TRAINING_CONFIG
+        self.config = config
+        
         self.device = torch.device('cpu')
         print(f"사용 중인 디바이스: {self.device}")
         
-        # 모델 초기화 (10입력, 9출력, 3은닉층)
-        self.model = QKDMLP(input_size=10, hidden_sizes=[512, 256, 128], output_size=9)
+        # 모델 초기화 (dropout_rate는 설정값 사용)
+        self.model = QKDMLP(input_size=10, hidden_sizes=[512, 256, 128], output_size=9, 
+                           dropout_rate=config['dropout_rate'])
         self.model.to(self.device)
         
-        # 옵티마이저 및 손실 함수 (논문: Adam, MSE)
-        self.optimizer = optim.Adam(self.model.parameters(), lr=0.001, weight_decay=1e-5)
+        # 옵티마이저 및 손실 함수 (설정값 사용)
+        self.optimizer = optim.Adam(self.model.parameters(), 
+                                   lr=config['learning_rate'], 
+                                   weight_decay=config['weight_decay'])
         self.criterion = nn.MSELoss()  # 논문에서 사용한 MSE Loss
         
         # 스케일러들
@@ -164,13 +186,16 @@ class QKDMLPTrainer:
         # 가중치 적용
         weighted_losses = param_losses * self.param_weights
         
-        # 전체 손실은 가중 평균 (기존 스케일링 유지)
-        total_loss = torch.sum(weighted_losses) * 100
+        # 전체 손실은 가중 평균 (설정값 사용)
+        total_loss = torch.sum(weighted_losses) * self.config['loss_scaling']
         
         return total_loss
     
-    def create_data_loaders(self, X_train, y_train, batch_size=64):
+    def create_data_loaders(self, X_train, y_train, batch_size=None):
         """DataLoader 생성 (훈련용만)"""
+        if batch_size is None:
+            batch_size = self.config['batch_size']
+            
         train_dataset = QKDDataset(X_train, y_train)
         
         # 시드 고정을 위해 generator 사용
@@ -221,8 +246,10 @@ class QKDMLPTrainer:
         
         return total_loss / len(val_loader)
     
-    def train(self, train_loader, epochs=120):
+    def train(self, train_loader, epochs=None):
         """모델 훈련 (검증 없이)"""
+        if epochs is None:
+            epochs = self.config['epochs']
         print(f"훈련 시작 - 에포크: {epochs}")
         
         best_train_loss = float('inf')
@@ -362,10 +389,10 @@ def main():
     # DataLoader 생성
     train_loader = trainer.create_data_loaders(X_train_scaled, y_train_scaled)
     
-    # 모델 훈련
+    # 모델 훈련 (설정값 사용)
     print("\n모델 훈련 시작...")
     start_time = time.time()
-    trainer.train(train_loader, epochs=120)
+    trainer.train(train_loader)  # epochs는 설정값에서 자동으로 가져옴
     training_time = time.time() - start_time
     
     print(f"\n훈련 완료! 소요 시간: {training_time:.2f}초")
