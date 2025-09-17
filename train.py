@@ -31,7 +31,7 @@ class QKDDataset(Dataset):
 
 class QKDMLP(nn.Module):
     """QKD 파라미터 최적화를 위한 MLP 신경망 (논문 구조)"""
-    def __init__(self, input_size=10, hidden_sizes=[512, 256], output_size=9, dropout_rate=0.1):
+    def __init__(self, input_size=10, hidden_sizes=[512, 256, 128], output_size=9, dropout_rate=0.1):
         super(QKDMLP, self).__init__()
         
         # 입력층
@@ -77,8 +77,8 @@ class QKDMLPTrainer:
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         print(f"사용 중인 디바이스: {self.device}")
         
-        # 모델 초기화 (논문 구조: 10입력, 9출력, 2은닉층)
-        self.model = QKDMLP(input_size=10, hidden_sizes=[512, 256], output_size=9)
+        # 모델 초기화 (10입력, 9출력, 3은닉층)
+        self.model = QKDMLP(input_size=10, hidden_sizes=[512, 256, 128], output_size=9)
         self.model.to(self.device)
         
         # 옵티마이저 및 손실 함수 (논문: Adam, MSE)
@@ -92,6 +92,11 @@ class QKDMLPTrainer:
         # 훈련 기록
         self.train_losses = []
         self.val_losses = []
+        
+        # 파라미터별 가중치 설정 (SKR에 높은 가중치)
+        # ['mu', 'nu', 'vac', 'p_mu', 'p_nu', 'p_vac', 'p_X', 'q_X', 'skr']
+        self.param_weights = torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 10.0]).to(self.device)
+        print(f"파라미터 가중치: SKR={self.param_weights[-1]:.1f}x, 나머지={self.param_weights[0]:.1f}x")
         
     def load_data(self, csv_path):
         """CSV 파일에서 데이터 로드"""
@@ -133,6 +138,19 @@ class QKDMLPTrainer:
         
         return X_scaled, y_scaled
     
+    def weighted_loss(self, output, target):
+        """파라미터별 가중치가 적용된 MSE 손실 함수"""
+        # 각 파라미터별 MSE 계산
+        param_losses = torch.mean((output - target) ** 2, dim=0)  # shape: (9,)
+        
+        # 가중치 적용
+        weighted_losses = param_losses * self.param_weights
+        
+        # 전체 손실은 가중 평균 (기존 스케일링 유지)
+        total_loss = torch.sum(weighted_losses) * 100
+        
+        return total_loss
+    
     def create_data_loaders(self, X_train, y_train, batch_size=64):
         """DataLoader 생성 (훈련용만)"""
         train_dataset = QKDDataset(X_train, y_train)
@@ -150,7 +168,9 @@ class QKDMLPTrainer:
             
             self.optimizer.zero_grad()
             output = self.model(data)
-            loss = self.criterion(output, target) * 10  # 100배나 10배가 성능 좋은듯.
+            
+            # 가중치가 적용된 손실 함수 계산
+            loss = self.weighted_loss(output, target)
             loss.backward()
             self.optimizer.step()
             
@@ -167,7 +187,7 @@ class QKDMLPTrainer:
             for data, target in val_loader:
                 data, target = data.to(self.device), target.to(self.device)
                 output = self.model(data)
-                loss = self.criterion(output, target)
+                loss = self.weighted_loss(output, target)
                 total_loss += loss.item()
         
         return total_loss / len(val_loader)
@@ -269,7 +289,7 @@ class QKDMLPTrainer:
             'val_losses': self.val_losses,
             'model_config': {
                 'input_size': 10,
-                'hidden_sizes': [512, 256],
+                'hidden_sizes': [512, 256, 128],
                 'output_size': 9,
                 'dropout_rate': 0.1
             }
