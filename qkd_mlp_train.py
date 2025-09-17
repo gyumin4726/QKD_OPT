@@ -31,7 +31,7 @@ class QKDDataset(Dataset):
 
 class QKDMLP(nn.Module):
     """QKD 파라미터 최적화를 위한 MLP 신경망 (논문 구조)"""
-    def __init__(self, input_size=10, hidden_sizes=[400, 200], output_size=9, dropout_rate=0.1):
+    def __init__(self, input_size=10, hidden_sizes=[512, 256], output_size=9, dropout_rate=0.1):
         super(QKDMLP, self).__init__()
         
         # 입력층
