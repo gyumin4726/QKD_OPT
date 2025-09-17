@@ -1,26 +1,35 @@
 #!/usr/bin/env python3
-"""
-test_qkd_dataset_11905.csv와 test_qkd_dataset.csv를 합치는 스크립트
-"""
 
 import pandas as pd
 import numpy as np
 import os
 
+# 파일 설정 - 한 곳에서 모든 파일명 관리
+DEFAULT_FILES = {
+    'file1': '1.csv',
+    'file2': 'test_qkd_dataset_cleaned.csv', 
+    'output': 'final_dataset.csv'
+}
+
 def merge_qkd_datasets(
-    file1='test_qkd_dataset_11905.csv',
-    file2='test_qkd_dataset_cleaned.csv', 
-    output_file='final_dataset.csv',
+    file1=None,
+    file2=None, 
+    output_file=None,
     remove_invalid_skr=True
 ):
     """두 QKD 데이터셋을 합치는 함수
     
     Args:
-        file1 (str): 첫 번째 데이터셋 파일명
-        file2 (str): 두 번째 데이터셋 파일명  
-        output_file (str): 합친 데이터셋 저장 파일명
+        file1 (str): 첫 번째 데이터셋 파일명 (None이면 기본값 사용)
+        file2 (str): 두 번째 데이터셋 파일명 (None이면 기본값 사용)
+        output_file (str): 합친 데이터셋 저장 파일명 (None이면 기본값 사용)
         remove_invalid_skr (bool): SKR이 -1인 행들을 제거할지 여부
     """
+    
+    # 기본값 설정
+    file1 = file1 or DEFAULT_FILES['file1']
+    file2 = file2 or DEFAULT_FILES['file2']
+    output_file = output_file or DEFAULT_FILES['output']
     
     print("=" * 60)
     print("QKD 데이터셋 합치기")
@@ -111,13 +120,8 @@ def merge_qkd_datasets(
 
 def main():
     """메인 실행 함수"""
-    # 기본 파일명으로 합치기
-    merged_df = merge_qkd_datasets(
-        file1='test_qkd_dataset_11905.csv',
-        file2='test_qkd_dataset_cleaned.csv',
-        output_file='final_dataset.csv',
-        remove_invalid_skr=True  # SKR이 -1인 행들 제거
-    )
+    # 기본 파일명으로 합치기 (파일명은 DEFAULT_FILES에서 자동으로 가져옴)
+    merged_df = merge_qkd_datasets(remove_invalid_skr=True)
     
     if merged_df is not None:
         print("\n" + "=" * 60)
