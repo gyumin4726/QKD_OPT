@@ -1,9 +1,3 @@
-#!/usr/bin/env python3
-"""
-QKD MLP 훈련 스크립트 - 논문 구현
-Neural Networks for Parameter Optimization in Quantum Key Distribution
-"""
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -11,7 +5,6 @@ from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
-from sklearn.model_selection import train_test_split
 import time
 from tqdm import tqdm
 import warnings
@@ -19,7 +12,6 @@ import random
 import os
 warnings.filterwarnings('ignore')
 
-# 훈련 설정 - 핵심 하이퍼파라미터 관리
 TRAINING_CONFIG = {
     'epochs': 120,
     'batch_size': 64,

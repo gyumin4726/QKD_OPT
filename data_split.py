@@ -1,8 +1,3 @@
-#!/usr/bin/env python3
-"""
-QKD 데이터셋을 8:2로 훈련/평가용으로 분리하는 스크립트
-"""
-
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split

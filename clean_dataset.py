@@ -1,8 +1,3 @@
-#!/usr/bin/env python3
-"""
-데이터셋에서 SKR이 -1인 값들을 제거하는 스크립트
-"""
-
 import pandas as pd
 import numpy as np
 

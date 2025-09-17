@@ -1,9 +1,3 @@
-#!/usr/bin/env python3
-"""
-QKD MLP 모델 예측 테스트 스크립트
-"""
-
-import torch
 import numpy as np
 import pandas as pd
 from train import QKDMLPTrainer, set_seed

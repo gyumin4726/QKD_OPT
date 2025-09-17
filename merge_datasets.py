@@ -1,10 +1,7 @@
-#!/usr/bin/env python3
-
 import pandas as pd
 import numpy as np
 import os
 
-# 파일 설정 - 한 곳에서 모든 파일명 관리
 DEFAULT_FILES = {
     'file1': '1.csv',
     'file2': 'test_qkd_dataset_cleaned.csv', 
