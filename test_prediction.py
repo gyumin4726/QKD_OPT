@@ -47,14 +47,17 @@ def evaluate_with_test_data():
             param_errors[param_name] = {'mse': param_mse, 'mae': param_mae}
             print(f"  {param_name}: MSE={param_mse:.6f}, MAE={param_mae:.6f}")
         
-        # 첫 5개 샘플의 실제값 vs 예측값 비교
+        # 랜덤 5개 샘플의 실제값 vs 예측값 비교
         print("\n" + "=" * 60)
-        print("첫 5개 샘플 - 실제값 vs 예측값")
+        print("랜덤 5개 샘플 - 실제값 vs 예측값")
         print("=" * 60)
         
-        for i in range(min(5, len(df))):
+        # 랜덤 샘플 인덱스 선택
+        random_indices = np.random.choice(len(df), min(5, len(df)), replace=False)
+        
+        for idx, i in enumerate(random_indices):
             row = df.iloc[i]
-            print(f"\n샘플 {i+1} (L={row['L']:.1f}km):")
+            print(f"\n샘플 {idx+1} (인덱스 {i}, L={row['L']:.1f}km):")
             print("  파라미터: 실제값 -> 예측값 (오차)")
             
             for j, col in enumerate(output_columns):
