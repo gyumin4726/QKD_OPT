@@ -70,9 +70,32 @@ def evaluate_with_test_data():
                 else:
                     print(f"  {col:>6}: {actual:.6f} -> {predicted:.6f} ({error_percent:.1f}%)")
         
+        # 모든 샘플의 파라미터별 평균 오차 % 계산
+        print("\n" + "=" * 60)
+        print("전체 테스트 데이터셋 - 파라미터별 평균 오차 %")
+        print("=" * 60)
+        
+        param_avg_errors = {}
+        for j, param_name in enumerate(output_columns):
+            actual_values = y_test[:, j]
+            predicted_values = predictions[:, j]
+            
+            # 퍼센트 오차 계산: |실제값 - 예측값| / |실제값| * 100
+            percent_errors = abs((actual_values - predicted_values) / actual_values) * 100
+            avg_error_percent = np.mean(percent_errors)
+            
+            param_avg_errors[param_name] = avg_error_percent
+            print(f"  {param_name:>6}: 평균 {avg_error_percent:.2f}%")
+        
+        # 전체 평균 오차 % 계산
+        overall_avg_error = np.mean(list(param_avg_errors.values()))
+        print(f"\n전체 평균 오차 %: {overall_avg_error:.2f}%")
+        
         return {
             'overall_mse': overall_mse,
             'param_errors': param_errors,
+            'param_avg_error_percent': param_avg_errors,
+            'overall_avg_error_percent': overall_avg_error,
             'predictions': predictions,
             'actuals': y_test
         }
