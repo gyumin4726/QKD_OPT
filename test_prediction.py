@@ -6,13 +6,16 @@ QKD MLP 모델 예측 테스트 스크립트
 import torch
 import numpy as np
 import pandas as pd
-from train import QKDMLP, QKDMLPTrainer
+from train import QKDMLPTrainer, set_seed
 
 def evaluate_with_test_data():
     """평가 데이터셋으로 모델 평가 및 성능 측정"""
     print("=" * 60)
     print("QKD MLP 모델 평가")
     print("=" * 60)
+    
+    # 재현 가능한 결과를 위한 시드 고정
+    set_seed(42)
     
     try:
         # 평가 데이터 로드

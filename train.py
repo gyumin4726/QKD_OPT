@@ -15,7 +15,25 @@ from sklearn.model_selection import train_test_split
 import time
 from tqdm import tqdm
 import warnings
+import random
+import os
 warnings.filterwarnings('ignore')
+
+def set_seed(seed=42):
+    """모든 랜덤성 소스에 대해 시드를 고정하여 재현 가능한 결과 보장"""
+    print(f"시드 고정: {seed}")
+    
+    # Python 내장 random 모듈
+    random.seed(seed)
+    
+    # NumPy
+    np.random.seed(seed)
+    
+    # PyTorch CPU
+    torch.manual_seed(seed)
+    
+    # 환경 변수로도 설정 (일부 라이브러리용)
+    os.environ['PYTHONHASHSEED'] = str(seed)
 
 class QKDDataset(Dataset):
     """QKD 데이터셋을 위한 PyTorch Dataset 클래스"""
@@ -74,7 +92,7 @@ class QKDMLPTrainer:
     """QKD MLP 훈련 및 평가를 위한 클래스"""
     
     def __init__(self, config_path='config/config.yaml'):
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = torch.device('cpu')
         print(f"사용 중인 디바이스: {self.device}")
         
         # 모델 초기화 (10입력, 9출력, 3은닉층)
@@ -95,7 +113,7 @@ class QKDMLPTrainer:
         
         # 파라미터별 가중치 설정 (SKR에 높은 가중치)
         # ['mu', 'nu', 'vac', 'p_mu', 'p_nu', 'p_vac', 'p_X', 'q_X', 'skr']
-        self.param_weights = torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 10.0]).to(self.device)
+        self.param_weights = torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 15.0]).to(self.device)
         print(f"파라미터 가중치: SKR={self.param_weights[-1]:.1f}x, 나머지={self.param_weights[0]:.1f}x")
         
     def load_data(self, csv_path):
@@ -154,7 +172,18 @@ class QKDMLPTrainer:
     def create_data_loaders(self, X_train, y_train, batch_size=64):
         """DataLoader 생성 (훈련용만)"""
         train_dataset = QKDDataset(X_train, y_train)
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        
+        # 시드 고정을 위해 generator 사용
+        generator = torch.Generator()
+        generator.manual_seed(42)
+        
+        train_loader = DataLoader(
+            train_dataset, 
+            batch_size=batch_size, 
+            shuffle=True,
+            generator=generator,  # 재현 가능한 셔플링
+            worker_init_fn=lambda worker_id: np.random.seed(42 + worker_id)  # 멀티프로세싱 시드
+        )
         
         return train_loader
     
@@ -312,6 +341,9 @@ def main():
     print("QKD MLP 신경망 훈련 - 논문 구현")
     print("Neural Networks for Parameter Optimization in Quantum Key Distribution")
     print("=" * 80)
+    
+    # 재현 가능한 결과를 위한 시드 고정
+    set_seed(42)
     
     # 훈련기 초기화
     trainer = QKDMLPTrainer()
