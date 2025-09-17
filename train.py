@@ -78,7 +78,7 @@ class QKDMLPTrainer:
         print(f"사용 중인 디바이스: {self.device}")
         
         # 모델 초기화 (논문 구조: 10입력, 9출력, 2은닉층)
-        self.model = QKDMLP(input_size=10, hidden_sizes=[400, 200], output_size=9)
+        self.model = QKDMLP(input_size=10, hidden_sizes=[512, 256], output_size=9)
         self.model.to(self.device)
         
         # 옵티마이저 및 손실 함수 (논문: Adam, MSE)
@@ -269,7 +269,7 @@ class QKDMLPTrainer:
             'val_losses': self.val_losses,
             'model_config': {
                 'input_size': 10,
-                'hidden_sizes': [400, 200],
+                'hidden_sizes': [512, 256],
                 'output_size': 9,
                 'dropout_rate': 0.1
             }
