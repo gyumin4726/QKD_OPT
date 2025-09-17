@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 
-def split_qkd_dataset(input_file='test_qkd_dataset_11905.csv', test_size=0.2, random_state=42):
+def split_qkd_dataset(input_file='final_dataset.csv', test_size=0.2, random_state=42):
     """QKD 데이터셋을 훈련/평가용으로 분할"""
     print("=" * 60)
     print("QKD 데이터셋 분할")
