@@ -34,9 +34,17 @@ class QKDDataGenerator:
         # 고정 파라미터 (현재는 없음, 모든 파라미터를 변수로 사용)
         self.fixed_params = {}
     
-    def generate_input_combinations(self, n_samples=10000, method='random'):
+    def generate_input_combinations(self, n_samples=10000, method='random', random_seed=None):
         """다양한 입력 파라미터 조합 생성"""
         print(f"입력 파라미터 조합 {n_samples}개 생성 중...")
+        
+        # 시드 설정 (None이면 랜덤, 숫자면 고정)
+        if random_seed is not None:
+            np.random.seed(random_seed)
+        else:
+            # 완전히 랜덤하게 하려면 현재 시간 기반으로 시드 설정
+            import time
+            np.random.seed(int(time.time() * 1000000) % 2**32)
         
         if method == 'random':
             # 무작위 샘플링
@@ -145,8 +153,8 @@ class QKDDataGenerator:
         """전체 데이터셋 생성"""
         print(f"QKD 데이터셋 생성 시작 (샘플 수: {n_samples})")
         
-        # 입력 조합 생성
-        input_combinations = self.generate_input_combinations(n_samples, method='random')
+        # 입력 조합 생성 (매번 다른 랜덤 조합을 위해 시드를 None으로 설정)
+        input_combinations = self.generate_input_combinations(n_samples, method='random', random_seed=None)
         
         # 각 조합에 대해 최적화 수행
         dataset = []
@@ -245,7 +253,7 @@ if __name__ == "__main__":
     # 작은 데이터셋으로 테스트
     print("테스트 데이터셋 생성 중...")
     test_dataset = generator.generate_dataset(
-        n_samples=1000,  # 테스트용으로 작은 수
+        n_samples=3,  # 테스트용으로 작은 수
         max_generations=100,  # 빠른 테스트를 위해 세대 수 줄임
         save_path='test_qkd_dataset.csv'
     )
