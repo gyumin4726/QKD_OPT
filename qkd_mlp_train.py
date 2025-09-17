@@ -113,8 +113,8 @@ class QKDMLPTrainer:
         
         return X, y
     
-    def preprocess_data(self, X, y, test_size=0.2, random_state=42):
-        """데이터 전처리 및 분할 (논문 방식)"""
+    def preprocess_data(self, X, y):
+        """데이터 전처리 (정규화만)"""
         print("데이터 전처리 중...")
         
         # 로그 스케일 정규화 (논문에서 언급한 대로)
@@ -131,25 +131,14 @@ class QKDMLPTrainer:
         # 출력 데이터는 이미 0-1 범위이므로 MinMax 정규화만 적용
         y_scaled = self.target_scaler.fit_transform(y)
         
-        # 훈련/검증 분할
-        X_train, X_val, y_train, y_val = train_test_split(
-            X_scaled, y_scaled, test_size=test_size, random_state=random_state
-        )
-        
-        print(f"훈련 데이터: {X_train.shape[0]} 샘플")
-        print(f"검증 데이터: {X_val.shape[0]} 샘플")
-        
-        return X_train, X_val, y_train, y_val
+        return X_scaled, y_scaled
     
-    def create_data_loaders(self, X_train, X_val, y_train, y_val, batch_size=64):
-        """DataLoader 생성"""
+    def create_data_loaders(self, X_train, y_train, batch_size=64):
+        """DataLoader 생성 (훈련용만)"""
         train_dataset = QKDDataset(X_train, y_train)
-        val_dataset = QKDDataset(X_val, y_val)
-        
         train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
         
-        return train_loader, val_loader
+        return train_loader
     
     def train_epoch(self, train_loader):
         """한 에포크 훈련"""
@@ -161,7 +150,7 @@ class QKDMLPTrainer:
             
             self.optimizer.zero_grad()
             output = self.model(data)
-            loss = self.criterion(output, target)
+            loss = self.criterion(output, target) * 10  # 100배나 10배가 성능 좋은듯.
             loss.backward()
             self.optimizer.step()
             
@@ -183,43 +172,29 @@ class QKDMLPTrainer:
         
         return total_loss / len(val_loader)
     
-    def train(self, train_loader, val_loader, epochs=120, patience=20):
-        """모델 훈련 (논문: 120 에포크)"""
-        print(f"훈련 시작 - 에포크: {epochs}, 조기 종료: {patience}")
+    def train(self, train_loader, epochs=120):
+        """모델 훈련 (검증 없이)"""
+        print(f"훈련 시작 - 에포크: {epochs}")
         
-        best_val_loss = float('inf')
-        patience_counter = 0
+        best_train_loss = float('inf')
         
         for epoch in tqdm(range(epochs), desc="훈련 진행"):
             # 훈련
             train_loss = self.train_epoch(train_loader)
             self.train_losses.append(train_loss)
             
-            # 검증
-            val_loss = self.validate_epoch(val_loader)
-            self.val_losses.append(val_loss)
-            
-            # 조기 종료 체크
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                patience_counter = 0
-                # 최고 모델 저장
+            # 최고 모델 저장
+            if train_loss < best_train_loss:
+                best_train_loss = train_loss
                 torch.save(self.model.state_dict(), 'best_qkd_mlp_model.pth')
-            else:
-                patience_counter += 1
             
             # 진행 상황 출력
             if (epoch + 1) % 10 == 0:
-                print(f"에포크 {epoch+1}/{epochs} - 훈련 손실: {train_loss:.6f}, 검증 손실: {val_loss:.6f}")
-            
-            # 조기 종료
-            if patience_counter >= patience:
-                print(f"조기 종료: {patience} 에포크 동안 개선 없음")
-                break
+                print(f"에포크 {epoch+1}/{epochs} - 훈련 손실: {train_loss:.6f}")
         
         # 최고 모델 로드
         self.model.load_state_dict(torch.load('best_qkd_mlp_model.pth'))
-        print(f"최고 검증 손실: {best_val_loss:.6f}")
+        print(f"최고 훈련 손실: {best_train_loss:.6f}")
     
     def evaluate(self, test_loader):
         """모델 평가"""
@@ -242,8 +217,8 @@ class QKDMLPTrainer:
         predictions_original = self.target_scaler.inverse_transform(predictions)
         targets_original = self.target_scaler.inverse_transform(targets)
         
-        # MSE 계산
-        mse = np.mean((predictions_original - targets_original) ** 2)
+        # 평가용 MSE 계산 (원본 스케일)
+        eval_mse = np.mean((predictions_original - targets_original) ** 2)
         
         # 각 파라미터별 정확도 계산
         param_names = ['mu', 'nu', 'vac', 'p_mu', 'p_nu', 'p_vac', 'p_X', 'q_X', 'skr']
@@ -255,7 +230,7 @@ class QKDMLPTrainer:
             param_errors[param_name] = {'mse': param_mse, 'mae': param_mae}
         
         return {
-            'overall_mse': mse,
+            'overall_mse': eval_mse,
             'param_errors': param_errors,
             'predictions': predictions_original,
             'targets': targets_original
@@ -321,37 +296,27 @@ def main():
     # 훈련기 초기화
     trainer = QKDMLPTrainer()
     
-    # 데이터 로드
+    # 훈련 데이터 로드
     try:
-        X, y = trainer.load_data('test_qkd_dataset_cleaned.csv')
+        X_train, y_train = trainer.load_data('train_data.csv')
     except FileNotFoundError:
-        print("오류: test_qkd_dataset.csv 파일이 없습니다.")
-        print("먼저 data_generator.py를 실행하여 데이터셋을 생성하세요.")
+        print("오류: train_data.csv 파일이 없습니다.")
+        print("먼저 data_split.py를 실행하여 데이터를 분할하세요.")
         return
     
-    # 데이터 전처리
-    X_train, X_val, y_train, y_val = trainer.preprocess_data(X, y)
+    # 데이터 전처리 (정규화만)
+    X_train_scaled, y_train_scaled = trainer.preprocess_data(X_train, y_train)
     
     # DataLoader 생성
-    train_loader, val_loader = trainer.create_data_loaders(X_train, X_val, y_train, y_val)
+    train_loader = trainer.create_data_loaders(X_train_scaled, y_train_scaled)
     
     # 모델 훈련
     print("\n모델 훈련 시작...")
     start_time = time.time()
-    trainer.train(train_loader, val_loader, epochs=250, patience=250)
+    trainer.train(train_loader, epochs=120)
     training_time = time.time() - start_time
     
     print(f"\n훈련 완료! 소요 시간: {training_time:.2f}초")
-    
-    # 모델 평가
-    print("\n모델 평가 중...")
-    results = trainer.evaluate(val_loader)
-    
-    print(f"\n전체 MSE: {results['overall_mse']:.6f}")
-    print("\n파라미터별 오차:")
-    for param, errors in results['param_errors'].items():
-        print(f"  {param}: MSE={errors['mse']:.6f}, MAE={errors['mae']:.6f}")
-    
     
     # 모델 저장 (PTH 형식)
     trainer.save_model('qkd_mlp_model.pth')
