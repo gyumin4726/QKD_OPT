@@ -127,7 +127,7 @@ class QKDMLPTrainer:
         
         # 파라미터별 가중치 설정 (SKR에 높은 가중치)
         # ['mu', 'nu', 'vac', 'p_mu', 'p_nu', 'p_vac', 'p_X', 'q_X', 'skr']
-        self.param_weights = torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 15.0]).to(self.device)
+        self.param_weights = torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1000.0]).to(self.device)
         print(f"파라미터 가중치: SKR={self.param_weights[-1]:.1f}x, 나머지={self.param_weights[0]:.1f}x")
         
     def load_data(self, csv_path):
