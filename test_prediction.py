@@ -41,17 +41,43 @@ def evaluate_with_test_data():
             param_errors[param_name] = {'mse': param_mse, 'mae': param_mae}
             print(f"  {param_name}: MSE={param_mse:.6f}, MAE={param_mae:.6f}")
         
-        # 랜덤 5개 샘플의 실제값 vs 예측값 비교
+        # SKR 오차 기준으로 5개 샘플 선택 (최소, 25%, 중간, 75%, 최대)
         print("\n" + "=" * 60)
-        print("랜덤 5개 샘플 - 실제값 vs 예측값")
+        print("SKR 오차 분포 및 대표 샘플 분석")
         print("=" * 60)
         
-        # 랜덤 샘플 인덱스 선택
-        random_indices = np.random.choice(len(df), min(5, len(df)), replace=False)
+        # SKR 오차 계산 (절대 퍼센트 오차)
+        skr_idx = output_columns.index('skr')  # SKR의 인덱스 찾기
+        skr_actual = y_test[:, skr_idx]
+        skr_predicted = predictions[:, skr_idx]
+        skr_percent_errors = np.abs((skr_actual - skr_predicted) / skr_actual) * 100
         
-        for idx, i in enumerate(random_indices):
+        # SKR 오차 분포 통계
+        print(f"SKR 오차 분포 통계:")
+        print(f"  최소 오차: {np.min(skr_percent_errors):.2f}%")
+        print(f"  1분위수(25%): {np.percentile(skr_percent_errors, 25):.2f}%")
+        print(f"  중간값(50%): {np.percentile(skr_percent_errors, 50):.2f}%")
+        print(f"  3분위수(75%): {np.percentile(skr_percent_errors, 75):.2f}%")
+        print(f"  최대 오차: {np.max(skr_percent_errors):.2f}%")
+        print(f"  평균 오차: {np.mean(skr_percent_errors):.2f}%")
+        
+        print("\n" + "=" * 60)
+        print("SKR 오차 기준 대표 샘플 5개 - 실제값 vs 예측값")
+        print("=" * 60)
+        
+        # 오차 기준으로 정렬된 인덱스
+        sorted_indices = np.argsort(skr_percent_errors)
+        
+        # 5개 샘플 인덱스 선택: 최소, 25%, 중간, 75%, 최대
+        sample_positions = [0, len(sorted_indices)//4, len(sorted_indices)//2, 
+                           3*len(sorted_indices)//4, len(sorted_indices)-1]
+        selected_indices = [sorted_indices[pos] for pos in sample_positions]
+        sample_labels = ["최소 오차", "1분위수(25%)", "중간값(50%)", "3분위수(75%)", "최대 오차"]
+        
+        for idx, (i, label) in enumerate(zip(selected_indices, sample_labels)):
             row = df.iloc[i]
-            print(f"\n샘플 {idx+1} (인덱스 {i}, L={row['L']:.1f}km):")
+            skr_error_percent = skr_percent_errors[i]
+            print(f"\n샘플 {idx+1} - {label} (인덱스 {i}, L={row['L']:.1f}km, SKR 오차: {skr_error_percent:.1f}%):")
             print("  파라미터: 실제값 -> 예측값 (오차)")
             
             for j, col in enumerate(output_columns):
