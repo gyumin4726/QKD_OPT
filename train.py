@@ -51,7 +51,7 @@ class QKDDataset(Dataset):
 
 class QKDMLP(nn.Module):
     """QKD 파라미터 최적화를 위한 MLP 신경망 (논문 구조)"""
-    def __init__(self, input_size=10, hidden_sizes=[512, 256, 128], output_size=9, dropout_rate=None):
+    def __init__(self, input_size=10, hidden_sizes=[512, 256], output_size=9, dropout_rate=None):
         super(QKDMLP, self).__init__()
         
         # dropout_rate가 None이면 설정값 사용
@@ -107,7 +107,7 @@ class QKDMLPTrainer:
         print(f"사용 중인 디바이스: {self.device}")
         
         # 모델 초기화 (dropout_rate는 설정값 사용)
-        self.model = QKDMLP(input_size=10, hidden_sizes=[512, 256, 128], output_size=9, 
+        self.model = QKDMLP(input_size=10, hidden_sizes=[512, 256], output_size=9, 
                            dropout_rate=config['dropout_rate'])
         self.model.to(self.device)
         
@@ -151,19 +151,51 @@ class QKDMLPTrainer:
         return X, y
     
     def preprocess_data(self, X, y):
-        """데이터 전처리 (정규화만)"""
-        print("데이터 전처리 중...")
+        """개선된 데이터 전처리 - 모든 변수에 적절한 변환 적용"""
+        print("개선된 데이터 전처리 중...")
         
-        # 로그 스케일 정규화 (논문에서 언급한 대로)
-        # Y_0, eps_sec, eps_cor, N은 로그 스케일로 변환
-        log_columns = [2, 7, 8, 9]  # Y_0, eps_sec, eps_cor, N의 인덱스
+        # 입력 변수별 적절한 변환 적용
+        # ['L', 'eta_d', 'Y_0', 'e_d', 'alpha', 'zeta', 'e_0', 'eps_sec', 'eps_cor', 'N']
+        X_transformed = X.copy()
         
-        X_log = X.copy()
-        for col in log_columns:
-            X_log[:, col] = np.log10(X_log[:, col])
+        # 1. L (0~150): 0값 때문에 log1p 사용 (log(1+x))
+        X_transformed[:, 0] = np.log1p(X_transformed[:, 0])  # L
         
-        # 입력 데이터 정규화 (논문: 정규화)
-        X_scaled = self.feature_scaler.fit_transform(X_log)
+        # 2. eta_d (0.02~0.08): 100배 스케일링으로 2~8 범위로 변환
+        X_transformed[:, 1] = X_transformed[:, 1] * 100  # eta_d
+        
+        # 3. Y_0 (1e-7~1e-5): 로그 변환 필요
+        X_transformed[:, 2] = np.log10(X_transformed[:, 2])  # Y_0
+        
+        # 4. e_d (0.02~0.05): 100배 스케일링으로 2~5 범위로 변환
+        X_transformed[:, 3] = X_transformed[:, 3] * 100  # e_d
+        
+        # 5. alpha (0.18~0.24): 100배 스케일링으로 18~24 범위로 변환
+        X_transformed[:, 4] = X_transformed[:, 4] * 100  # alpha
+        
+        # 6. zeta (1.1~1.4): 10배 스케일링으로 11~14 범위로 변환
+        X_transformed[:, 5] = X_transformed[:, 5] * 10  # zeta
+        
+        # 7. e_0 (0.4~0.6): 10배 스케일링으로 4~6 범위로 변환
+        X_transformed[:, 6] = X_transformed[:, 6] * 10  # e_0
+        
+        # 8. eps_sec (1e-12~1e-8): 로그 변환 필요
+        X_transformed[:, 7] = np.log10(X_transformed[:, 7])  # eps_sec
+        
+        # 9. eps_cor (1e-18~1e-13): 로그 변환 필요
+        X_transformed[:, 8] = np.log10(X_transformed[:, 8])  # eps_cor
+        
+        # 10. N (1e9~1e11): 로그 변환 필요
+        X_transformed[:, 9] = np.log10(X_transformed[:, 9])  # N
+        
+        print("변환 적용:")
+        print("  - L: log1p(x) 변환 (0값 처리)")
+        print("  - Y_0, eps_sec, eps_cor, N: log10(x) 변환")
+        print("  - eta_d, e_d, alpha: 100배 스케일링")
+        print("  - zeta, e_0: 10배 스케일링")
+        
+        # 입력 데이터 정규화 (StandardScaler)
+        X_scaled = self.feature_scaler.fit_transform(X_transformed)
         
         # 출력 데이터는 이미 0-1 범위이므로 MinMax 정규화만 적용
         y_scaled = self.target_scaler.fit_transform(y)
@@ -308,13 +340,22 @@ class QKDMLPTrainer:
         """새로운 데이터에 대한 예측"""
         self.model.eval()
         
-        # 전처리
-        X_log = X.copy()
-        log_columns = [2, 7, 8, 9]  # Y_0, eps_sec, eps_cor, N
-        for col in log_columns:
-            X_log[:, col] = np.log10(X_log[:, col])
+        # 전처리 (preprocess_data와 동일한 변환 적용)
+        X_transformed = X.copy()
         
-        X_scaled = self.feature_scaler.transform(X_log)
+        # 동일한 변환 적용
+        X_transformed[:, 0] = np.log1p(X_transformed[:, 0])    # L: log1p
+        X_transformed[:, 1] = X_transformed[:, 1] * 100        # eta_d: 100배
+        X_transformed[:, 2] = np.log10(X_transformed[:, 2])    # Y_0: log10
+        X_transformed[:, 3] = X_transformed[:, 3] * 100        # e_d: 100배
+        X_transformed[:, 4] = X_transformed[:, 4] * 100        # alpha: 100배
+        X_transformed[:, 5] = X_transformed[:, 5] * 10         # zeta: 10배
+        X_transformed[:, 6] = X_transformed[:, 6] * 10         # e_0: 10배
+        X_transformed[:, 7] = np.log10(X_transformed[:, 7])    # eps_sec: log10
+        X_transformed[:, 8] = np.log10(X_transformed[:, 8])    # eps_cor: log10
+        X_transformed[:, 9] = np.log10(X_transformed[:, 9])    # N: log10
+        
+        X_scaled = self.feature_scaler.transform(X_transformed)
         X_tensor = torch.FloatTensor(X_scaled).to(self.device)
         
         with torch.no_grad():
@@ -337,7 +378,7 @@ class QKDMLPTrainer:
             'val_losses': self.val_losses,
             'model_config': {
                 'input_size': 10,
-                'hidden_sizes': [512, 256, 128],
+                'hidden_sizes': [512, 256],
                 'output_size': 9,
                 'dropout_rate': 0.1
             }
