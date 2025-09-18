@@ -117,11 +117,68 @@ def evaluate_with_test_data():
         overall_avg_error = np.mean(list(param_avg_errors.values()))
         print(f"\n전체 평균 오차 %: {overall_avg_error:.2f}%")
         
+        # L별 SKR 평균 오차율 분석
+        print("\n" + "=" * 60)
+        print("L(거리)별 SKR 평균 오차율 분석")
+        print("=" * 60)
+        
+        # L 값별로 그룹화
+        unique_L_values = sorted(df['L'].unique())
+        l_skr_errors = {}
+        
+        for L_val in unique_L_values:
+            # 해당 L 값에 대한 데이터 필터링
+            L_mask = df['L'] == L_val
+            L_indices = np.where(L_mask)[0]
+            
+            if len(L_indices) > 0:
+                # 해당 L에서의 SKR 실제값과 예측값
+                L_skr_actual = skr_actual[L_indices]
+                L_skr_predicted = skr_predicted[L_indices]
+                
+                # SKR 퍼센트 오차 계산
+                L_skr_percent_errors = np.abs((L_skr_actual - L_skr_predicted) / L_skr_actual) * 100
+                
+                # 통계 계산
+                avg_error = np.mean(L_skr_percent_errors)
+                min_error = np.min(L_skr_percent_errors)
+                max_error = np.max(L_skr_percent_errors)
+                median_error = np.median(L_skr_percent_errors)
+                std_error = np.std(L_skr_percent_errors)
+                
+                l_skr_errors[L_val] = {
+                    'count': len(L_indices),
+                    'avg_error': avg_error,
+                    'min_error': min_error,
+                    'max_error': max_error,
+                    'median_error': median_error,
+                    'std_error': std_error
+                }
+                
+                print(f"L = {L_val:4.1f}km ({len(L_indices):4d}개 샘플):")
+                print(f"  평균 오차: {avg_error:6.2f}% | 중간값: {median_error:6.2f}% | 표준편차: {std_error:6.2f}%")
+                print(f"  최소 오차: {min_error:6.2f}% | 최대 오차: {max_error:6.2f}%")
+        
+        # L별 오차율 요약
+        print(f"\n{'='*60}")
+        print("L별 SKR 오차율 요약 (평균 기준 정렬)")
+        print(f"{'='*60}")
+        
+        # 평균 오차율 기준으로 정렬
+        sorted_L_errors = sorted(l_skr_errors.items(), key=lambda x: x[1]['avg_error'])
+        
+        print(f"{'L(km)':>6} | {'샘플수':>6} | {'평균오차(%)':>10} | {'중간값(%)':>10} | {'표준편차(%)':>11}")
+        print("-" * 60)
+        
+        for L_val, stats in sorted_L_errors:
+            print(f"{L_val:6.1f} | {stats['count']:6d} | {stats['avg_error']:10.2f} | {stats['median_error']:10.2f} | {stats['std_error']:11.2f}")
+        
         return {
             'overall_mse': overall_mse,
             'param_errors': param_errors,
             'param_avg_error_percent': param_avg_errors,
             'overall_avg_error_percent': overall_avg_error,
+            'l_skr_errors': l_skr_errors,
             'predictions': predictions,
             'actuals': y_test
         }
