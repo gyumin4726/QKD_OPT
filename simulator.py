@@ -127,13 +127,15 @@ def skr_simulator(_, solution, __, config=None, **kwargs):
     n_mu_Z = N * p_mu * p_Z * q_Z * Q_mu
     n_nu_Z = N * p_nu * p_Z * q_Z * Q_nu
     n_vac_Z = N * p_vac * p_Z * q_Z * Q_vac
+    # n_vac_Z = N * p_vac * q_Z * Q_vac 
 
     n_mu_X = N * p_mu * p_X * q_X * Q_mu
     n_nu_X = N * p_nu * p_X * q_X * Q_nu
     n_vac_X = N * p_vac * p_X * q_X * Q_vac
+    # n_vac_X = N * p_vac * q_X * Q_vac
 
     if (n_mu_Z<0) or (n_nu_Z<0) or (n_vac_Z<0) or (n_mu_X<0) or (n_nu_X<0) or (n_vac_X<0) :
-        return -8
+        return -9
     
     m_mu_Z = N * p_mu * p_Z * q_Z * (e_d * Q_mu + (e_0 - e_d)*Y_0)
     m_nu_Z = N * p_nu * p_Z * q_Z * (e_d * Q_nu + (e_0 - e_d)*Y_0)
