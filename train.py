@@ -197,8 +197,10 @@ class QKDMLPTrainer:
         # 입력 데이터 정규화 (StandardScaler)
         X_scaled = self.feature_scaler.fit_transform(X_transformed)
         
-        # 출력 데이터는 이미 0-1 범위이므로 MinMax 정규화만 적용
-        y_scaled = self.target_scaler.fit_transform(y)
+        # 출력 데이터 전처리 - SKR에 로그 변환 적용
+        y_transformed = y.copy()
+        y_transformed[:, -1] = np.log10(y_transformed[:, -1])  # SKR: log10 변환
+        y_scaled = self.target_scaler.fit_transform(y_transformed)
         
         return X_scaled, y_scaled
     
@@ -317,6 +319,10 @@ class QKDMLPTrainer:
         predictions_original = self.target_scaler.inverse_transform(predictions)
         targets_original = self.target_scaler.inverse_transform(targets)
         
+        # SKR에 대한 역변환 (log10 -> 원본 스케일)
+        predictions_original[:, -1] = 10 ** predictions_original[:, -1]  # SKR
+        targets_original[:, -1] = 10 ** targets_original[:, -1]  # SKR
+        
         # 평가용 MSE 계산 (원본 스케일)
         eval_mse = np.mean((predictions_original - targets_original) ** 2)
         
@@ -364,6 +370,9 @@ class QKDMLPTrainer:
         
         # 역정규화
         predictions_original = self.target_scaler.inverse_transform(predictions)
+        
+        # SKR에 대한 역변환 (log10 -> 원본 스케일)
+        predictions_original[:, -1] = 10 ** predictions_original[:, -1]  # SKR
         
         return predictions_original
     
