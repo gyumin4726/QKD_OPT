@@ -161,11 +161,11 @@ def evaluate_with_test_data():
         
         # L별 오차율 요약
         print(f"\n{'='*60}")
-        print("L별 SKR 오차율 요약 (평균 기준 정렬)")
+        print("L별 SKR 오차율 요약 (거리별 순서)")
         print(f"{'='*60}")
         
-        # 평균 오차율 기준으로 정렬
-        sorted_L_errors = sorted(l_skr_errors.items(), key=lambda x: x[1]['avg_error'])
+        # 거리별로 0~150km 순서로 정렬
+        sorted_L_errors = sorted(l_skr_errors.items(), key=lambda x: x[0])
         
         print(f"{'L(km)':>6} | {'샘플수':>6} | {'평균오차(%)':>10} | {'중간값(%)':>10} | {'표준편차(%)':>11}")
         print("-" * 60)
