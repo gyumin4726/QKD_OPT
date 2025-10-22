@@ -13,15 +13,19 @@ warnings.filterwarnings('ignore')
 from simulator import skr_simulator, QKDSimulatorConfig
 
 # 광섬유 길이 L 사용자 입력
-L = 60
+L = 100
+
+# vac 최적화 모드 설정 (True: vac도 최적화, False: vac=0 고정)
+OPTIMIZE_VAC = True
 
 # 설정 객체 생성
-simulator_config = QKDSimulatorConfig.from_yaml('config/config_crosscheck0.yaml')
+simulator_config = QKDSimulatorConfig.from_yaml('config/config.yaml')
 simulator_config.L = L
 
 # CPU 코어 수 자동 감지
 CPU_COUNT = os.cpu_count()
 print(f"사용 가능한 CPU 코어 수: {CPU_COUNT}")
+print(f"vac 최적화 모드: {'ON (vac 포함)' if OPTIMIZE_VAC else 'OFF (vac=0 고정)'}")
 
 # 재현 가능한 결과를 위한 시드 설정
 import random
@@ -29,20 +33,32 @@ random.seed(42)
 np.random.seed(42)
 
 def define_ga(co_type, mu_type, sel_type, 
-              gen = 100,
+              gen = 200,
               num_parents_mating = 60, sol_per_pop = 200, keep_parents = 50, keep_elitism = 10, K_tournament = 8, crossover_probability = 0.8, mutation_probability = 0.02, mutation_percent_genes = "default",
               random_seed = 42, fitness_func=None, config=None):
 
-    """유전 알고리즘 인스턴스를 정의하는 함수"""
+    """유전 알고리즘 인스턴스를 정의하는 함수 - vac 최적화 모드 지원"""
     
     # config가 제공되지 않으면 전역 config 사용
     if config is None:
         config = simulator_config
     
+    # 유전자 개수 설정 (OPTIMIZE_VAC에 따라)
+    num_genes = 8 if OPTIMIZE_VAC else 7
+    
     # PyGAD용 래퍼 함수 (fitness_func이 제공되지 않은 경우)
     if fitness_func is None:
-        def skr_fitness_wrapper(ga_instance, solution, solution_idx):
-            return skr_simulator(ga_instance, solution, solution_idx, config)
+        if OPTIMIZE_VAC:
+            # vac도 최적화: 8개 유전자 그대로 사용
+            def skr_fitness_wrapper(ga_instance, solution, solution_idx):
+                return skr_simulator(ga_instance, solution, solution_idx, config)
+        else:
+            # vac=0 고정: 7개 유전자를 8개로 확장
+            def skr_fitness_wrapper(ga_instance, solution, solution_idx):
+                # solution은 7개: mu, nu, p_mu, p_nu, p_vac, p_X, q_X
+                # vac=0을 인덱스 2에 삽입하여 8개로 만듦
+                full_solution = np.insert(solution, 2, 0.0)
+                return skr_simulator(ga_instance, full_solution, solution_idx, config)
         fitness_func = skr_fitness_wrapper
     
     ga_instance = pygad.GA(num_generations = gen,   #(논문 : 최대 1000)                    # 세대 수
@@ -53,7 +69,7 @@ def define_ga(co_type, mu_type, sel_type,
 
                     initial_population = None,                                           # 사용자 정의 초기 개체군, num_genes와 크기가 같아야 함
                     sol_per_pop = sol_per_pop,                                           # 한 세대에 포함되는 솔루션(염색체)의 수, 크면 탐색 다양성이 높아짐, 작으면 빠르게 수렴하지만 최적해를 놓칠 수 있음, initial population이 있으면 작동하지 않음
-                    num_genes = 8,                                                       # 염색체 내 유전자 수, initial_population을 사용하는 경우 이 매개변수가 필요하지 않음
+                    num_genes = num_genes,                                               # 염색체 내 유전자 수 (OPTIMIZE_VAC에 따라 7 또는 8), initial_population을 사용하는 경우 이 매개변수가 필요하지 않음
                     gene_type = [float, 6],                                              # 유전자 유형, 각 개별 유전자의 데이터 유형 및 소수점도 지정 가능, 리스트 형식 e.g. [int, float, bool, int]
 
                     init_range_low = 0,                                                  # 초기 모집단의 유전자 값이 선택되는 임의 범위의 하한, initial_population이 있으면 필요 없음
@@ -76,7 +92,7 @@ def define_ga(co_type, mu_type, sel_type,
                     random_mutation_min_val = -0.5,                                      # 유전자에 추가될 난수 값이 선택되는 범위의 하한
                     random_mutation_max_val = 0.5,                                       # 유전자에 추가될 난수 값이 선택되는 범위의 상한
 
-                    gene_space = [{'low': 0, 'high': 1}] * 8,
+                    gene_space = [{'low': 0, 'high': 1}] * num_genes,                    # 유전자 공간 (OPTIMIZE_VAC에 따라 7 또는 8개)
 
                     on_start = None,                                                     # 유전 알고리즘이 진화를 시작하기 전에 한 번만 호출되는 함수/메서드
                     on_fitness = None,                                                   # 모집단 내 모든 해의 적합도 값을 계산한 후 호출할 함수/메서드
@@ -133,7 +149,7 @@ def objective(trial):
         ga = define_ga(co_type=crossover_type,
                        mu_type=mutation_type,
                        sel_type=parent_selection_type,
-                       gen = 100,
+                       gen = 200,
                        num_parents_mating=num_parents_mating,
                        sol_per_pop=sol_per_pop,
                        keep_parents=keep_parents,
@@ -153,31 +169,32 @@ def objective(trial):
     return - total_fitness 
 
 def run_optimization():
-    """Optuna 최적화를 실행하는 함수 - 최적화된 하이퍼파라미터를 초기값으로 사용"""
+    """Optuna 최적화를 실행하는 함수 - 랜덤 초기값으로 시작"""
     sampler = optuna.samplers.TPESampler(n_startup_trials=20,  
                                          multivariate=False,    
                                          group=False)
 
     study = optuna.create_study(sampler = sampler, direction="minimize")
     
-    # 최적화된 하이퍼파라미터를 초기 시도로 추가
+    # Trial 575 하이퍼파라미터를 초기값으로 사용
     initial_params = {
-        'crossover_type': 'single_point',
+        'crossover_type': 'two_points',
         'mutation_type': 'adaptive',
-        'parent_selection_type': 'sss',
-        'sol_per_pop': 102,
-        'num_parents_mating': 22,
-        'keep_parents': 21,
-        'keep_elitism': 9,
-        'crossover_probability': 0.6509333611086074,
-        'mutation_percent_genes': [0.5, 0.05]
+        'parent_selection_type': 'tournament',
+        'sol_per_pop': 239,
+        'num_parents_mating': 125,
+        'keep_parents': 107,
+        'keep_elitism': 12,
+        'crossover_probability': 0.7248539327369946,
+        'mutation_percent_genes': [0.3, 0.1],
+        'K_tournament': 71
     }
     
-    # 초기 시도를 study에 추가
+    # # 초기 시도를 study에 추가
     study.enqueue_trial(initial_params)
     print("최적화된 하이퍼파라미터를 초기 시도로 추가했습니다.")
     
-    study.optimize(objective, n_trials=1, n_jobs=1)
+    study.optimize(objective, n_trials=1000, n_jobs=1)
 
     print("Best trial:")
     print(study.best_trial)
@@ -190,19 +207,35 @@ def run_final_ga(study):
 
     print(f"L={L}에서 최적화된 하이퍼파라미터로 GA를 실행합니다...")
     
+    # mutation 관련 파라미터 설정
+    mutation_type = study.best_trial.params['mutation_type']
+    if mutation_type == "adaptive":
+        mutation_percent_genes = study.best_trial.params['mutation_percent_genes']
+        mutation_probability = None
+    else:
+        mutation_percent_genes = "default"
+        mutation_probability = study.best_trial.params['mutation_probability']
+    
+    # K_tournament 파라미터 설정
+    parent_selection_type = study.best_trial.params['parent_selection_type']
+    if parent_selection_type == "tournament":
+        K_tournament = study.best_trial.params['K_tournament']
+    else:
+        K_tournament = None
+    
     for i in tqdm(range(num_iter)) : 
         ga_instance = define_ga(co_type = study.best_trial.params['crossover_type'], 
-                                mu_type = study.best_trial.params['mutation_type'], 
-                                sel_type = study.best_trial.params['parent_selection_type'], 
-                                gen = 100,
+                                mu_type = mutation_type, 
+                                sel_type = parent_selection_type, 
+                                gen = 200,
                                 num_parents_mating = study.best_trial.params['num_parents_mating'], 
                                 sol_per_pop = study.best_trial.params['sol_per_pop'],
                                 keep_parents = study.best_trial.params['keep_parents'], 
                                 keep_elitism = study.best_trial.params['keep_elitism'], 
                                 crossover_probability = study.best_trial.params['crossover_probability'], 
-                                mutation_probability = None,
-                                mutation_percent_genes = study.best_trial.params['mutation_percent_genes'], 
-                                #K_tournament = study.best_trial.params['K_tournament'],
+                                mutation_probability = mutation_probability,
+                                mutation_percent_genes = mutation_percent_genes, 
+                                K_tournament = K_tournament,
                                 random_seed = 42,
                                 fitness_func = None,  # 기본 래퍼 함수 사용
                                 config = simulator_config)  # config 전달
@@ -212,7 +245,7 @@ def run_final_ga(study):
     return solution_fitness, solution, solution_fitness, solution_idx
 
 def main():
-    """메인 실행 함수 - L=100 특화, 최적화된 하이퍼파라미터를 초기값으로 사용"""
+    """메인 실행 함수 - L=100 특화, 랜덤 초기값으로 시작"""
     start_time = time.time()
     
     print("=" * 60)

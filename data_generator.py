@@ -29,7 +29,7 @@ class QKDDataGenerator:
         }
         
         # L 값 리스트 (0, 10, 20, ..., 150)
-        self.L_values = list(range(0, 151, 10))
+        self.L_values = list(range(100, 121, 10))
         
         # 고정 파라미터 (현재는 없음, 모든 파라미터를 변수로 사용)
         self.fixed_params = {}
@@ -253,7 +253,7 @@ if __name__ == "__main__":
     # 작은 데이터셋으로 테스트
     print("테스트 데이터셋 생성 중...")
     test_dataset = generator.generate_dataset(
-        n_samples=1000,  # 테스트용으로 작은 수
+        n_samples=25000,  # 테스트용으로 작은 수
         max_generations=100,  # 빠른 테스트를 위해 세대 수 줄임
         save_path='test_qkd_dataset.csv'
     )

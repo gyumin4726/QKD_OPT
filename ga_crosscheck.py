@@ -9,11 +9,16 @@ warnings.filterwarnings('ignore')
 from simulator import skr_simulator, normalize_p, QKDSimulatorConfig
 
 # L은 직접 설정
-L = 20
+L = 100
+
+# vac 최적화 모드 설정 (True: vac도 최적화, False: vac=0 고정)
+OPTIMIZE_VAC = True
 
 # 설정 객체 생성 (YAML에서 자동 로드)
-simulator_config = QKDSimulatorConfig.from_yaml('config/config_crosscheck.yaml')
+simulator_config = QKDSimulatorConfig.from_yaml('config/config.yaml')
 simulator_config.L = L  # L 값만 별도로 설정
+
+print(f"vac 최적화 모드: {'ON (vac 포함)' if OPTIMIZE_VAC else 'OFF (vac=0 고정)'}")
 
 # 재현 가능한 결과를 위한 시드 설정
 import random
@@ -22,14 +27,25 @@ np.random.seed(42)
 
 # PyGAD용 래퍼 함수 (고정된 시그니처 필요)
 def skr_fitness_wrapper(ga_instance, solution, solution_idx):
-    """PyGAD용 SKR 적합도 함수 래퍼"""
-    return skr_simulator(ga_instance, solution, solution_idx, simulator_config)
+    """PyGAD용 SKR 적합도 함수 래퍼 - vac 최적화 모드 지원"""
+    if OPTIMIZE_VAC:
+        # vac도 최적화: 8개 유전자 그대로 사용
+        return skr_simulator(ga_instance, solution, solution_idx, simulator_config)
+    else:
+        # vac=0 고정: 7개 유전자를 8개로 확장
+        # solution은 7개: mu, nu, p_mu, p_nu, p_vac, p_X, q_X
+        # vac=0을 인덱스 2에 삽입하여 8개로 만듦
+        full_solution = np.insert(solution, 2, 0.0)
+        return skr_simulator(ga_instance, full_solution, solution_idx, simulator_config)
 
 def define_ga(co_type, mu_type, sel_type, 
-              gen = 100,
+              gen = 200,
               num_parents_mating = 60, sol_per_pop = 200, keep_parents = 50, keep_elitism = 10, K_tournament = 8, crossover_probability = 0.8, mutation_probability = 0.02, mutation_percent_genes = "default",
               random_seed = 42):
-    """유전 알고리즘 인스턴스를 정의하는 함수"""
+    """유전 알고리즘 인스턴스를 정의하는 함수 - vac 최적화 모드 지원"""
+    
+    # 유전자 개수 설정 (OPTIMIZE_VAC에 따라)
+    num_genes = 8 if OPTIMIZE_VAC else 7
     
     ga_instance = pygad.GA(num_generations = gen,   #(논문 : 최대 1000)                    # 세대 수
                     num_parents_mating = num_parents_mating,   #(논문 : 30)               # 부모로 선택될 솔루션의 수
@@ -39,7 +55,7 @@ def define_ga(co_type, mu_type, sel_type,
 
                     initial_population = None,                                           # 사용자 정의 초기 개체군, num_genes와 크기가 같아야 함
                     sol_per_pop = sol_per_pop,                                           # 한 세대에 포함되는 솔루션(염색체)의 수, 크면 탐색 다양성이 높아짐, 작으면 빠르게 수렴하지만 최적해를 놓칠 수 있음, initial population이 있으면 작동하지 않음
-                    num_genes = 8,                                                       # 염색체 내 유전자 수, initial_population을 사용하는 경우 이 매개변수가 필요하지 않음
+                    num_genes = num_genes,                                               # 염색체 내 유전자 수 (OPTIMIZE_VAC에 따라 7 또는 8), initial_population을 사용하는 경우 이 매개변수가 필요하지 않음
                     gene_type = [float, 6],                                              # 유전자 유형, 각 개별 유전자의 데이터 유형 및 소수점도 지정 가능, 리스트 형식 e.g. [int, float, bool, int]
 
                     init_range_low = 0,                                                  # 초기 모집단의 유전자 값이 선택되는 임의 범위의 하한, initial_population이 있으면 필요 없음
@@ -62,7 +78,7 @@ def define_ga(co_type, mu_type, sel_type,
                     random_mutation_min_val = -0.5,                                      # 유전자에 추가될 난수 값이 선택되는 범위의 하한
                     random_mutation_max_val = 0.5,                                       # 유전자에 추가될 난수 값이 선택되는 범위의 상한
 
-                    gene_space = [{'low': 0, 'high': 1}] * 8,
+                    gene_space = [{'low': 0, 'high': 1}] * num_genes,                    # 유전자 공간 (OPTIMIZE_VAC에 따라 7 또는 8개)
 
                     on_start = None,                                                     # 유전 알고리즘이 진화를 시작하기 전에 한 번만 호출되는 함수/메서드
                     on_fitness = None,                                                   # 모집단 내 모든 해의 적합도 값을 계산한 후 호출할 함수/메서드
@@ -91,15 +107,17 @@ def run_optimized_ga():
     """최적화된 하이퍼파라미터로 L=100에서 GA를 실행하는 함수"""
 
     optimized_params = {
-        'crossover_type': 'single_point',
-        'mutation_type': 'adaptive',
+        'crossover_type': 'uniform',
+        'mutation_type': 'random',
         'parent_selection_type': 'sss',
-        'sol_per_pop': 102,
-        'num_parents_mating': 22,
-        'keep_parents': 21,
-        'keep_elitism': 9,
-        'crossover_probability': 0.6509333611086074,
-        'mutation_percent_genes': [0.5, 0.05]
+        'sol_per_pop': 223,
+        'num_parents_mating': 219,
+        'keep_parents': 216,
+        'keep_elitism': 20,
+        'crossover_probability': 0.45202349121460356,
+        'mutation_probability': 0.018366799686118797,
+        'mutation_percent_genes': 'default',
+        'K_tournament': 8
     }
 
     print(f"=== L={L}에서 최적화된 하이퍼파라미터로 GA 실행 ===")
@@ -114,15 +132,15 @@ def run_optimized_ga():
         co_type=optimized_params['crossover_type'],
         mu_type=optimized_params['mutation_type'],
         sel_type=optimized_params['parent_selection_type'],
-        gen = 100,
+        gen = 200,
         num_parents_mating=optimized_params['num_parents_mating'],
         sol_per_pop=optimized_params['sol_per_pop'],
         keep_parents=optimized_params['keep_parents'],
         keep_elitism=optimized_params['keep_elitism'],
         crossover_probability=optimized_params['crossover_probability'],
-        mutation_probability=None,  # adaptive mutation 사용
+        mutation_probability=optimized_params['mutation_probability'],
         mutation_percent_genes=optimized_params['mutation_percent_genes'],
-        #K_tournament=optimized_params['K_tournament'],
+        K_tournament=optimized_params['K_tournament'],
         random_seed=42
     )
     
@@ -148,15 +166,26 @@ def main():
     print(f"최적 SKR 값: {solution_fitness:.6e}")
     print()
     
-    print("최적 파라미터 값:")
-    print(f"  mu: {solution[0]:.6f}")
-    print(f"  nu: {solution[1]:.6f}")
-    print(f"  vac: {solution[2]:.6f}")
-    print(f"  p_mu: {solution[3]:.6f}")
-    print(f"  p_nu: {solution[4]:.6f}")
-    print(f"  p_vac: {solution[5]:.6f}")
-    print(f"  p_x: {solution[6]:.6f}")
-    print(f"  q_x: {solution[7]:.6f}")
+    if OPTIMIZE_VAC:
+        print("최적 파라미터 값 (vac 최적화):")
+        print(f"  mu: {solution[0]:.6f}")
+        print(f"  nu: {solution[1]:.6f}")
+        print(f"  vac: {solution[2]:.6f}")
+        print(f"  p_mu: {solution[3]:.6f}")
+        print(f"  p_nu: {solution[4]:.6f}")
+        print(f"  p_vac: {solution[5]:.6f}")
+        print(f"  p_x: {solution[6]:.6f}")
+        print(f"  q_x: {solution[7]:.6f}")
+    else:
+        print("최적 파라미터 값 (vac=0 고정):")
+        print(f"  mu: {solution[0]:.6f}")
+        print(f"  nu: {solution[1]:.6f}")
+        print(f"  vac: 0.000000 (고정)")
+        print(f"  p_mu: {solution[2]:.6f}")
+        print(f"  p_nu: {solution[3]:.6f}")
+        print(f"  p_vac: {solution[4]:.6f}")
+        print(f"  p_x: {solution[5]:.6f}")
+        print(f"  q_x: {solution[6]:.6f}")
     
 
 if __name__ == "__main__":
