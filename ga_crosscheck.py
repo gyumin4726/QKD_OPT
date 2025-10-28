@@ -12,7 +12,7 @@ from simulator import skr_simulator, normalize_p, QKDSimulatorConfig
 L = 100
 
 # vac 최적화 모드 설정 (True: vac도 최적화, False: vac=0 고정)
-OPTIMIZE_VAC = True
+OPTIMIZE_VAC = False
 
 # 설정 객체 생성 (YAML에서 자동 로드)
 simulator_config = QKDSimulatorConfig.from_yaml('config/config.yaml')
@@ -107,17 +107,17 @@ def run_optimized_ga():
     """최적화된 하이퍼파라미터로 L=100에서 GA를 실행하는 함수"""
 
     optimized_params = {
-        'crossover_type': 'uniform',
-        'mutation_type': 'random',
-        'parent_selection_type': 'sss',
-        'sol_per_pop': 223,
-        'num_parents_mating': 219,
-        'keep_parents': 216,
-        'keep_elitism': 20,
-        'crossover_probability': 0.45202349121460356,
-        'mutation_probability': 0.018366799686118797,
-        'mutation_percent_genes': 'default',
-        'K_tournament': 8
+        'crossover_type': 'scattered',
+        'mutation_type': 'adaptive',
+        'parent_selection_type': 'tournament',
+        'sol_per_pop': 236,
+        'num_parents_mating': 231,
+        'keep_parents': 227,
+        'keep_elitism': 16,
+        'crossover_probability': 0.9999386923718254,
+        'mutation_probability': None,  # adaptive mutation은 probability 대신 percent_genes 사용
+        'mutation_percent_genes': [0.3, 0.1],
+        'K_tournament': 159
     }
 
     print(f"=== L={L}에서 최적화된 하이퍼파라미터로 GA 실행 ===")
@@ -128,6 +128,15 @@ def run_optimized_ga():
     
     # GA 인스턴스 생성 및 실행
     print("GA를 실행합니다...")
+    
+    # adaptive mutation의 경우 mutation_percent_genes에 리스트를 전달
+    if optimized_params['mutation_type'] == 'adaptive':
+        mutation_percent = optimized_params['mutation_percent_genes']
+        mutation_prob = None
+    else:
+        mutation_prob = optimized_params['mutation_probability'] if optimized_params['mutation_probability'] is not None else 0.02
+        mutation_percent = 'default'
+    
     ga_instance = define_ga(
         co_type=optimized_params['crossover_type'],
         mu_type=optimized_params['mutation_type'],
@@ -138,8 +147,8 @@ def run_optimized_ga():
         keep_parents=optimized_params['keep_parents'],
         keep_elitism=optimized_params['keep_elitism'],
         crossover_probability=optimized_params['crossover_probability'],
-        mutation_probability=optimized_params['mutation_probability'],
-        mutation_percent_genes=optimized_params['mutation_percent_genes'],
+        mutation_probability=mutation_prob,
+        mutation_percent_genes=mutation_percent,
         K_tournament=optimized_params['K_tournament'],
         random_seed=42
     )

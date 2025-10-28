@@ -13,10 +13,10 @@ warnings.filterwarnings('ignore')
 from simulator import skr_simulator, QKDSimulatorConfig
 
 # 광섬유 길이 L 사용자 입력
-L = 100
+L = 80
 
 # vac 최적화 모드 설정 (True: vac도 최적화, False: vac=0 고정)
-OPTIMIZE_VAC = True
+OPTIMIZE_VAC = False
 
 # 설정 객체 생성
 simulator_config = QKDSimulatorConfig.from_yaml('config/config.yaml')
@@ -176,7 +176,7 @@ def run_optimization():
 
     study = optuna.create_study(sampler = sampler, direction="minimize")
     
-    # Trial 575 하이퍼파라미터를 초기값으로 사용
+    # 최적화된 하이퍼파라미터를 초기값으로 사용
     initial_params = {
         'crossover_type': 'two_points',
         'mutation_type': 'adaptive',

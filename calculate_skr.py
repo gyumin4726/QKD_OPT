@@ -35,47 +35,47 @@ def calculate_skr(mu, nu, vac, p_mu, p_nu, p_vac, p_x, q_x,
 
 
 if __name__ == "__main__":
-    # vac 값을 변화시키면서 SKR 계산
+    # 새로운 파라미터 값으로 L=0~120까지 SKR 계산
     print("=" * 60)
-    print("vac 변화에 따른 SKR 계산")
+    print("새로운 파라미터로 L=0~120까지 SKR 계산")
     print("=" * 60)
     
-    # 고정 파라미터 설정
-    L = 100
-    mu = 0.399478
-    nu = 0.167165
-    p_mu = 0.563898
-    p_nu = 0.912773
-    p_vac = 0.141586
-    p_x = 0.332250
-    q_x = 0.363639
+    # 파라미터 설정 (사용자 제공 값)
+    mu = 0.521068
+    nu = 0.236871
+    vac = 0.034389
+    p_mu = 0.252630
+    p_nu = 0.862988
+    p_vac = 0.090949
+    p_x = 0.163874
+    q_x = 0.209120
+    
+    # L 값 범위 설정 (0부터 120까지 10단위)
+    L_values = np.arange(0, 131, 10)
     
     print(f"\n배경 파라미터: config/config.yaml에서 로드")
-    print(f"거리 L: {L} km")
-    print(f"\n고정된 파라미터:")
+    print(f"거리 L: 0~120 km (10 km 간격, 총 {len(L_values)}개)")
+    print(f"\n파라미터:")
     print(f"  mu: {mu}")
     print(f"  nu: {nu}")
+    print(f"  vac: {vac}")
     print(f"  p_mu: {p_mu}")
     print(f"  p_nu: {p_nu}")
     print(f"  p_vac: {p_vac}")
     print(f"  p_x: {p_x}")
     print(f"  q_x: {q_x}")
     
-    # vac 범위 설정 (0.0부터 nu보다 작게)
-    vac_step = 0.005
-    vac_values = np.arange(0.0, nu, vac_step)
-    
-    print(f"\n" + "=" * 60)
-    print(f"vac를 {vac_values[0]:.3f}부터 {vac_values[-1]:.3f}까지 {vac_step} 간격으로 변화")
-    print(f"총 {len(vac_values)}개 값 테스트")
+    print("\n" + "=" * 60)
+    print("SKR 계산 중...")
     print("=" * 60)
-    print(f"\n{'vac':>8} | {'SKR':>15} | {'상태':>10}")
-    print("-" * 60)
     
     results = []
     
     try:
-        for vac in vac_values:
+        print(f"\n{'L (km)':>8} | {'SKR':>15} | {'상태':>10}")
+        print("-" * 40)
+        
+        for L in L_values:
             skr = calculate_skr(
                 mu=mu,
                 nu=nu,
@@ -88,24 +88,18 @@ if __name__ == "__main__":
                 L=L
             )
             
-            # 결과 저장
-            results.append({'vac': vac, 'skr': skr})
+            results.append({'L': L, 'skr': skr})
             
-            # 상태 판단
             if skr < 0:
                 status = f"에러({int(skr)})"
+                print(f"{L:8.0f} | {skr:15.0f} | {status:>10}")
             else:
                 status = "정상"
-            
-            # 결과 출력
-            if skr < 0:
-                print(f"{vac:8.5f} | {skr:15.0f} | {status:>10}")
-            else:
-                print(f"{vac:8.5f} | {skr:15.6e} | {status:>10}")
+                print(f"{L:8.0f} | {skr:15.6e} | {status:>10}")
         
-        # 요약 통계
+        # 요약
         print("\n" + "=" * 60)
-        print("요약 통계")
+        print("요약")
         print("=" * 60)
         
         valid_results = [r for r in results if r['skr'] >= 0]
@@ -117,8 +111,19 @@ if __name__ == "__main__":
         if valid_results:
             max_skr = max(valid_results, key=lambda x: x['skr'])
             min_skr = min(valid_results, key=lambda x: x['skr'])
-            print(f"\n최대 SKR: {max_skr['skr']:.6e} (vac={max_skr['vac']:.5f})")
-            print(f"최소 SKR: {min_skr['skr']:.6e} (vac={min_skr['vac']:.5f})")
+            print(f"\n최대 SKR: {max_skr['skr']:.6e} (L={max_skr['L']} km)")
+            print(f"최소 SKR: {min_skr['skr']:.6e} (L={min_skr['L']} km)")
+        
+        # 결과를 배열로 반환
+        print("\n" + "=" * 60)
+        print("결과 배열 (코드에서 사용)")
+        print("=" * 60)
+        
+        L_values_str = ', '.join(map(str, [r['L'] for r in results]))
+        skr_values_str = ', '.join([f"{r['skr']:.6e}" if r['skr'] >= 0 else '0' for r in results])
+        
+        print(f"L = np.array([{L_values_str}])")
+        print(f"skr_modified = np.array([{skr_values_str}])")
         
     except FileNotFoundError:
         print("\n오류: config/config.yaml 파일을 찾을 수 없습니다.")
