@@ -9,7 +9,7 @@ warnings.filterwarnings('ignore')
 from simulator import skr_simulator, normalize_p, QKDSimulatorConfig
 
 # L은 직접 설정
-L = 100
+L = 20
 
 # vac 최적화 모드 설정 (True: vac도 최적화, False: vac=0 고정)
 OPTIMIZE_VAC = False
@@ -110,14 +110,14 @@ def run_optimized_ga():
         'crossover_type': 'scattered',
         'mutation_type': 'adaptive',
         'parent_selection_type': 'tournament',
-        'sol_per_pop': 236,
-        'num_parents_mating': 231,
-        'keep_parents': 227,
-        'keep_elitism': 16,
-        'crossover_probability': 0.9999386923718254,
+        'sol_per_pop': 188,
+        'num_parents_mating': 41,
+        'keep_parents': 40,
+        'keep_elitism': 8,
+        'crossover_probability': 0.549428712068568,
         'mutation_probability': None,  # adaptive mutation은 probability 대신 percent_genes 사용
-        'mutation_percent_genes': [0.3, 0.1],
-        'K_tournament': 159
+        'mutation_percent_genes': [0.7, 0.2],
+        'K_tournament': 25
     }
 
     print(f"=== L={L}에서 최적화된 하이퍼파라미터로 GA 실행 ===")

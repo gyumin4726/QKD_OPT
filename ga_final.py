@@ -13,7 +13,8 @@ warnings.filterwarnings('ignore')
 from simulator import skr_simulator, QKDSimulatorConfig
 
 # 광섬유 길이 L 사용자 입력
-L = 80
+# 10 30 40 50 60 70 80 90 100 110 완료 120에서 -1만 반환되는 이유를 찾아봐야할듯(랜덤 초기화 해보자자).
+L = 20
 
 # vac 최적화 모드 설정 (True: vac도 최적화, False: vac=0 고정)
 OPTIMIZE_VAC = False
@@ -24,8 +25,8 @@ simulator_config.L = L
 
 # CPU 코어 수 자동 감지
 CPU_COUNT = os.cpu_count()
-print(f"사용 가능한 CPU 코어 수: {CPU_COUNT}")
-print(f"vac 최적화 모드: {'ON (vac 포함)' if OPTIMIZE_VAC else 'OFF (vac=0 고정)'}")
+# print(f"사용 가능한 CPU 코어 수: {CPU_COUNT}")
+# print(f"vac 최적화 모드: {'ON (vac 포함)' if OPTIMIZE_VAC else 'OFF (vac=0 고정)'}")
 
 # 재현 가능한 결과를 위한 시드 설정
 import random

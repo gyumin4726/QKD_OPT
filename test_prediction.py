@@ -16,7 +16,8 @@ def evaluate_with_test_data():
         df = pd.read_csv('test_data.csv')
         print(f"평가 데이터 로드 완료: {len(df)} 샘플")
         
-        input_columns = ['L', 'eta_d', 'Y_0', 'e_d', 'alpha', 'zeta', 'e_0', 'eps_sec', 'eps_cor', 'N']
+        # e_0는 0.5로 고정되어 있으므로 입력에서 제외
+        input_columns = ['L', 'eta_d', 'Y_0', 'e_d', 'alpha', 'zeta', 'eps_sec', 'eps_cor', 'N']
         output_columns = ['mu', 'nu', 'vac', 'p_mu', 'p_nu', 'p_vac', 'p_X', 'q_X', 'skr']
         
         # 훈련기 초기화 (스케일러 로드용)
