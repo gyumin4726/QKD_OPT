@@ -12,14 +12,22 @@ import random
 import os
 warnings.filterwarnings('ignore')
 
+# ============================================
+# ===== 여기서 학습 설정을 변경하세요 =====
+# ============================================
 TRAINING_CONFIG = {
-    'epochs': 120,
-    'batch_size': 64,
+    # 기본 설정
+    'L': 100,              # 거리 L (km)
+    'epochs': 120,         # 훈련 에포크 수
+    'batch_size': 64,      # 배치 크기
+    # 최적화 설정
     'learning_rate': 0.001,
+    'momentum': 0.9,          # SGD momentum
     'weight_decay': 1e-5,
     'dropout_rate': 0.1,
     'loss_scaling': 100
 }
+# ============================================
 
 def set_seed(seed=42):
     """모든 랜덤성 소스에 대해 시드를 고정하여 재현 가능한 결과 보장"""
@@ -40,37 +48,37 @@ def set_seed(seed=42):
 def transform_input_features(X):
     """
     모델 입력 특성에 대해 학습 및 추론 단계에서 동일하게 적용할 변환.
-    - eta_d, e_d, alpha: 100배 스케일링
-    - zeta: 10배 스케일링
-    - Y_0, eps_sec, eps_cor, N: log10 변환
+    - Y_0, eps_sec, eps_cor, N: log10 변환 (분포 형상 정규화)
+    - 나머지 변수(eta_d, e_d, alpha, zeta): 원본 유지
+    - 최종적으로 StandardScaler가 전체를 정규화하므로 ×100/×10 스케일링은 불필요
     """
     X_transformed = np.array(X, dtype=np.float64, copy=True)
 
     if X_transformed.ndim == 1:
         X_transformed = X_transformed.reshape(1, -1)
 
-    # 1. eta_d (0.02~0.08): 100배 스케일링으로 2~8 범위로 변환
-    X_transformed[:, 0] = X_transformed[:, 0] * 100  # eta_d
+    # 1. eta_d: 원본 유지 (StandardScaler가 정규화)
+    # X_transformed[:, 0] = X_transformed[:, 0]  # eta_d
 
-    # 2. Y_0 (1e-7~1e-5): 로그 변환 필요
+    # 2. Y_0 (1e-7~1e-5): 로그 변환 필요 (10배 단위 변동)
     X_transformed[:, 1] = np.log10(np.clip(X_transformed[:, 1], a_min=1e-20, a_max=None))  # Y_0
 
-    # 3. e_d (0.02~0.05): 100배 스케일링으로 2~5 범위로 변환
-    X_transformed[:, 2] = X_transformed[:, 2] * 100  # e_d
+    # 3. e_d: 원본 유지 (StandardScaler가 정규화)
+    # X_transformed[:, 2] = X_transformed[:, 2]  # e_d
 
-    # 4. alpha (0.18~0.24): 100배 스케일링으로 18~24 범위로 변환
-    X_transformed[:, 3] = X_transformed[:, 3] * 100  # alpha
+    # 4. alpha: 원본 유지 (StandardScaler가 정규화)
+    # X_transformed[:, 3] = X_transformed[:, 3]  # alpha
 
-    # 5. zeta (1.1~1.4): 10배 스케일링으로 11~14 범위로 변환
-    X_transformed[:, 4] = X_transformed[:, 4] * 10  # zeta
+    # 5. zeta: 원본 유지 (StandardScaler가 정규화)
+    # X_transformed[:, 4] = X_transformed[:, 4]  # zeta
 
-    # 6. eps_sec (1e-12~1e-8): 로그 변환 필요
+    # 6. eps_sec (1e-12~1e-8): 로그 변환 필요 (10배 단위 변동)
     X_transformed[:, 5] = np.log10(np.clip(X_transformed[:, 5], a_min=1e-30, a_max=None))  # eps_sec
 
-    # 7. eps_cor (1e-18~1e-13): 로그 변환 필요
+    # 7. eps_cor (1e-18~1e-13): 로그 변환 필요 (10배 단위 변동)
     X_transformed[:, 6] = np.log10(np.clip(X_transformed[:, 6], a_min=1e-30, a_max=None))  # eps_cor
 
-    # 8. N (1e9~1e11): 로그 변환 필요
+    # 8. N (1e9~1e11): 로그 변환 필요 (10배 단위 변동)
     X_transformed[:, 7] = np.log10(np.clip(X_transformed[:, 7], a_min=1.0, a_max=None))  # N
 
     return X_transformed
@@ -166,14 +174,15 @@ class QKDMLPTrainer:
         self.model.to(self.device)
         
         # 옵티마이저 및 손실 함수 (설정값 사용)
-        self.optimizer = optim.Adam(self.model.parameters(), 
-                                   lr=config['learning_rate'], 
-                                   weight_decay=config['weight_decay'])
+        self.optimizer = optim.SGD(self.model.parameters(), 
+                                  lr=config['learning_rate'], 
+                                  momentum=config['momentum'],
+                                  weight_decay=config['weight_decay'])
         self.criterion = nn.MSELoss()  # 논문에서 사용한 MSE Loss
         
         # 스케일러들
         self.feature_scaler = StandardScaler()
-        self.target_scaler = MinMaxScaler()
+        self.target_scaler = StandardScaler()
         
         # 훈련 기록
         self.train_losses = []
@@ -216,8 +225,7 @@ class QKDMLPTrainer:
         
         print("변환 적용:")
         print("  - Y_0, eps_sec, eps_cor, N: log10(x) 변환")
-        print("  - eta_d, e_d, alpha: 100배 스케일링")
-        print("  - zeta: 10배 스케일링")
+        print("  - eta_d, e_d, alpha, zeta: 원본 유지 (StandardScaler로 정규화)")
         
         # 입력 데이터 정규화 (StandardScaler)
         X_scaled = self.feature_scaler.fit_transform(X_transformed)
@@ -417,44 +425,88 @@ class QKDMLPTrainer:
 
 def main():
     """메인 실행 함수"""
+    # 설정값 사용
+    L = TRAINING_CONFIG['L']
+    seed = 42  # 고정 시드
+    
+    # 경로 설정 (L 값 기반)
+    train_csv = f"dataset/train_L{L}.csv"
+    test_csv = f"dataset/test_L{L}.csv"
+    epochs = TRAINING_CONFIG['epochs']
+    batch_size = TRAINING_CONFIG['batch_size']
+    output_path = f"qkd_mlp_L{L}_E{epochs}_B{batch_size}.pth"
+    
     print("=" * 80)
-    print("QKD MLP 신경망 훈련 - 논문 구현")
+    print(f"QKD MLP 신경망 훈련 (L={L} km)")
     print("Neural Networks for Parameter Optimization in Quantum Key Distribution")
     print("=" * 80)
     
+    # 설정 사용
+    config = TRAINING_CONFIG.copy()
+    
     # 재현 가능한 결과를 위한 시드 고정
-    set_seed(42)
+    set_seed(seed)
     
     # 훈련기 초기화
-    trainer = QKDMLPTrainer()
+    trainer = QKDMLPTrainer(config=config)
+    
+    input_columns = ['eta_d', 'Y_0', 'e_d', 'alpha', 'zeta', 'eps_sec', 'eps_cor', 'N']
+    output_columns = ['mu', 'nu', 'vac', 'p_mu', 'p_nu', 'p_vac', 'p_X', 'q_X', 'skr']
     
     # 훈련 데이터 로드
-    try:
-        X_train, y_train = trainer.load_data('train_data.csv')
-    except FileNotFoundError:
-        print("오류: train_data.csv 파일이 없습니다.")
-        print("먼저 data_split.py를 실행하여 데이터를 분할하세요.")
-        return
+    if not os.path.exists(train_csv):
+        raise FileNotFoundError(f"훈련 데이터 CSV를 찾을 수 없습니다: {train_csv}")
+    if not os.path.exists(test_csv):
+        raise FileNotFoundError(f"테스트 데이터 CSV를 찾을 수 없습니다: {test_csv}")
     
-    # 데이터 전처리 (정규화만)
+    train_df = pd.read_csv(train_csv)
+    test_df = pd.read_csv(test_csv)
+    
+    print(f"훈련 데이터 로드: {train_csv} ({len(train_df)} 샘플)")
+    print(f"테스트 데이터 로드: {test_csv} ({len(test_df)} 샘플)")
+    
+    X_train = train_df[input_columns].to_numpy()
+    y_train = train_df[output_columns].to_numpy()
+    
+    # 데이터 전처리
     X_train_scaled, y_train_scaled = trainer.preprocess_data(X_train, y_train)
     
     # DataLoader 생성
     train_loader = trainer.create_data_loaders(X_train_scaled, y_train_scaled)
     
-    # 모델 훈련 (설정값 사용)
+    # 모델 훈련
     print("\n모델 훈련 시작...")
     start_time = time.time()
-    trainer.train(train_loader)  # epochs는 설정값에서 자동으로 가져옴
+    trainer.train(train_loader, epochs=config.get('epochs'))
     training_time = time.time() - start_time
     
     print(f"\n훈련 완료! 소요 시간: {training_time:.2f}초")
     
-    # 모델 저장 (PTH 형식)
-    trainer.save_model('qkd_mlp_model.pth')
+    # 테스트 데이터 평가
+    print("\n테스트 데이터 평가 중...")
+    X_test = test_df[input_columns].to_numpy()
+    y_test = test_df[output_columns].to_numpy()
+    
+    X_test_transformed = transform_input_features(X_test)
+    X_test_scaled = trainer.feature_scaler.transform(X_test_transformed)
+    y_test_transformed = transform_target_outputs(y_test)
+    y_test_scaled = trainer.target_scaler.transform(y_test_transformed)
+    
+    test_dataset = QKDDataset(X_test_scaled, y_test_scaled)
+    test_loader = DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=False)
+    
+    metrics = trainer.evaluate(test_loader)
+    print(f"테스트 MSE (전체): {metrics['overall_mse']:.6e}")
+    
+    print("\n파라미터별 테스트 오차:")
+    for param, stats in metrics['param_errors'].items():
+        print(f"  - {param:>4s}: MSE={stats['mse']:.6e}, MAE={stats['mae']:.6e}")
+    
+    # 모델 저장
+    trainer.save_model(output_path)
     
     print("\n" + "=" * 80)
-    print("훈련 완료! 모델이 qkd_mlp_model.pth로 저장되었습니다.")
+    print(f"훈련 완료! 모델이 {output_path}에 저장되었습니다.")
     print("=" * 80)
 
 if __name__ == "__main__":
