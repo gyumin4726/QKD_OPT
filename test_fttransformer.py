@@ -14,9 +14,9 @@ from train_fttransformer import (
 # ============================================
 # ===== 여기서 테스트 설정을 변경하세요 =====
 # ============================================
-MODEL_PATH = "qkd_fttransformer_L100_E200_B128.pth"  # 평가할 모델 파일 경로
+MODEL_PATH = "best.pth"  # 평가할 모델 파일 경로
 TEST_CSV = "dataset/test_L100.csv"  # 테스트 데이터 CSV 파일 경로
-TEST_BATCH_SIZE = 256   # 테스트 배치 크기
+TEST_BATCH_SIZE = 512   # 테스트 배치 크기
 SHOW_DETAILED = True   # 상세 분석 출력 여부
 SHOW_IMPORTANCE = True  # 변수 중요도 분석 출력 여부
 # ============================================
