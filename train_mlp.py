@@ -18,14 +18,17 @@ warnings.filterwarnings('ignore')
 TRAINING_CONFIG = {
     # 기본 설정
     'L': 100,              # 거리 L (km)
-    'epochs': 120,         # 훈련 에포크 수
-    'batch_size': 64,      # 배치 크기
+    'epochs': 200,         # 훈련 에포크 수
+    'batch_size': 128,      # 배치 크기
     # 최적화 설정
     'learning_rate': 0.001,
-    'momentum': 0.9,          # SGD momentum
     'weight_decay': 1e-5,
     'dropout_rate': 0.1,
-    'loss_scaling': 100
+    'loss_scaling': 100,
+    # Early stopping 설정
+    'early_stopping': True,    # Early stopping 사용 여부
+    'early_stopping_patience': 30,  # 몇 에포크 동안 개선 없으면 중단
+    'early_stopping_min_delta': 1e-6,  # 개선으로 간주할 최소 변화량
 }
 # ============================================
 
@@ -50,26 +53,26 @@ def transform_input_features(X):
     모델 입력 특성에 대해 학습 및 추론 단계에서 동일하게 적용할 변환.
     - Y_0, eps_sec, eps_cor, N: log10 변환 (분포 형상 정규화)
     - 나머지 변수(eta_d, e_d, alpha, zeta): 원본 유지
-    - 최종적으로 StandardScaler가 전체를 정규화하므로 ×100/×10 스케일링은 불필요
+    - 최종적으로 MinMaxScaler가 전체를 정규화하므로 ×100/×10 스케일링은 불필요
     """
     X_transformed = np.array(X, dtype=np.float64, copy=True)
 
     if X_transformed.ndim == 1:
         X_transformed = X_transformed.reshape(1, -1)
 
-    # 1. eta_d: 원본 유지 (StandardScaler가 정규화)
+    # 1. eta_d: 원본 유지 (MinMaxScaler가 정규화)
     # X_transformed[:, 0] = X_transformed[:, 0]  # eta_d
 
     # 2. Y_0 (1e-7~1e-5): 로그 변환 필요 (10배 단위 변동)
     X_transformed[:, 1] = np.log10(np.clip(X_transformed[:, 1], a_min=1e-20, a_max=None))  # Y_0
 
-    # 3. e_d: 원본 유지 (StandardScaler가 정규화)
+    # 3. e_d: 원본 유지 (MinMaxScaler가 정규화)
     # X_transformed[:, 2] = X_transformed[:, 2]  # e_d
 
-    # 4. alpha: 원본 유지 (StandardScaler가 정규화)
+    # 4. alpha: 원본 유지 (MinMaxScaler가 정규화)
     # X_transformed[:, 3] = X_transformed[:, 3]  # alpha
 
-    # 5. zeta: 원본 유지 (StandardScaler가 정규화)
+    # 5. zeta: 원본 유지 (MinMaxScaler가 정규화)
     # X_transformed[:, 4] = X_transformed[:, 4]  # zeta
 
     # 6. eps_sec (1e-12~1e-8): 로그 변환 필요 (10배 단위 변동)
@@ -185,15 +188,23 @@ class QKDMLPTrainer:
         self.model.to(self.device)
         
         # 옵티마이저 및 손실 함수 (설정값 사용)
-        self.optimizer = optim.SGD(self.model.parameters(), 
-                                  lr=config['learning_rate'], 
-                                  momentum=config['momentum'],
-                                  weight_decay=config['weight_decay'])
+        self.optimizer = optim.Adam(
+            self.model.parameters(), 
+            lr=config['learning_rate'], 
+            weight_decay=config['weight_decay']
+        )
+        # Learning rate scheduler 추가
+        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer, 
+            mode='min', 
+            factor=0.5, 
+            patience=10
+        )
         self.criterion = nn.MSELoss()  # 논문에서 사용한 MSE Loss
         
         # 스케일러들
-        self.feature_scaler = StandardScaler()
-        self.target_scaler = StandardScaler()
+        self.feature_scaler = MinMaxScaler()
+        self.target_scaler = MinMaxScaler()
         
         # 훈련 기록
         self.train_losses = []
@@ -236,9 +247,9 @@ class QKDMLPTrainer:
         
         print("입력 변환 적용:")
         print("  - Y_0, eps_sec, eps_cor, N: log10(x) 변환")
-        print("  - eta_d, e_d, alpha, zeta: 원본 유지 (StandardScaler로 정규화)")
+        print("  - eta_d, e_d, alpha, zeta: 원본 유지 (MinMaxScaler로 정규화)")
         
-        # 입력 데이터 정규화 (StandardScaler)
+        # 입력 데이터 정규화 (MinMaxScaler)
         X_scaled = self.feature_scaler.fit_transform(X_transformed)
         
         # 출력 데이터 전처리 - p_mu/p_nu/p_vac를 비율로 변환, SKR에 로그 변환 적용
@@ -298,6 +309,10 @@ class QKDMLPTrainer:
             # 가중치가 적용된 손실 함수 계산
             loss = self.weighted_loss(output, target)
             loss.backward()
+            
+            # Gradient clipping 추가 (학습 안정화)
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+            
             self.optimizer.step()
             
             total_loss += loss.item()
@@ -319,30 +334,60 @@ class QKDMLPTrainer:
         return total_loss / len(val_loader)
     
     def train(self, train_loader, epochs=None):
-        """모델 훈련 (검증 없이)"""
+        """모델 훈련"""
         if epochs is None:
             epochs = self.config['epochs']
         print(f"훈련 시작 - 에포크: {epochs}")
         
+        # Early stopping 설정
+        use_early_stopping = self.config.get('early_stopping', False)
+        early_stopping_patience = self.config.get('early_stopping_patience', 30)
+        early_stopping_min_delta = self.config.get('early_stopping_min_delta', 1e-6)
+        
+        if use_early_stopping:
+            print(f"Early stopping 활성화: patience={early_stopping_patience}, min_delta={early_stopping_min_delta}")
+        
         best_train_loss = float('inf')
+        best_epoch = 0
+        epochs_without_improvement = 0
         
         for epoch in tqdm(range(epochs), desc="훈련 진행"):
             # 훈련
             train_loss = self.train_epoch(train_loader)
             self.train_losses.append(train_loss)
             
-            # 최고 모델 저장
-            if train_loss < best_train_loss:
+            # Learning rate scheduler 업데이트
+            self.scheduler.step(train_loss)
+            
+            # 최고 모델 저장 및 개선 확인
+            improved = False
+            if train_loss < (best_train_loss - early_stopping_min_delta):
                 best_train_loss = train_loss
+                best_epoch = epoch + 1  # best epoch 기록
                 torch.save(self.model.state_dict(), 'best_qkd_mlp_model.pth')
+                epochs_without_improvement = 0
+                improved = True
+            else:
+                epochs_without_improvement += 1
             
             # 진행 상황 출력
-            if (epoch + 1) % 10 == 0:
-                print(f"에포크 {epoch+1}/{epochs} - 훈련 손실: {train_loss:.6f}")
+            if (epoch + 1) % 10 == 0 or improved:
+                current_lr = self.optimizer.param_groups[0]['lr']
+                early_stop_info = f", Early stop: {epochs_without_improvement}/{early_stopping_patience}" if use_early_stopping else ""
+                print(f"에포크 {epoch+1}/{epochs} - 훈련 손실: {train_loss:.6f}, LR: {current_lr:.6f}{early_stop_info}")
+            
+            # Early stopping 체크
+            if use_early_stopping and epochs_without_improvement >= early_stopping_patience:
+                print(f"\nEarly stopping 발동! {early_stopping_patience} 에포크 동안 개선이 없었습니다.")
+                print(f"최고 손실: {best_train_loss:.6f} (에포크 {best_epoch})")
+                if best_epoch < (epoch + 1):
+                    print(f"→ {epoch + 1 - best_epoch} 에포크 전의 체크포인트로 복원됩니다.")
+                break
         
         # 최고 모델 로드
         self.model.load_state_dict(torch.load('best_qkd_mlp_model.pth'))
-        print(f"최고 훈련 손실: {best_train_loss:.6f}")
+        print(f"\n최고 훈련 손실: {best_train_loss:.6f} (에포크 {best_epoch})")
+        print(f"총 훈련 에포크: {epoch + 1}/{epochs}")
     
     def evaluate(self, test_loader):
         """모델 평가"""
