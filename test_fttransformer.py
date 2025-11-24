@@ -205,16 +205,6 @@ def main():
     )
     print(f"  평균: {skr_summary['mean']:.2f}% | 표준편차: {skr_summary['std']:.2f}%")
 
-    # 변수 중요도 분석 (옵션)
-    if SHOW_IMPORTANCE:
-        print("\n" + "=" * 60)
-        print("변수 중요도 분석 (첫 100개 샘플 기준)")
-        print("=" * 60)
-        sample_importance = trainer.get_attention_weights(X_test[:100])
-        var_names = input_columns
-        for i, (name, imp) in enumerate(zip(var_names, sample_importance)):
-            print(f"{name:12s}: {imp:.4f}")
-
     # 상세 분석 (옵션)
     if SHOW_DETAILED:
         print_detailed_analysis(df, predictions, actuals, output_columns)

@@ -25,6 +25,10 @@ TRAINING_CONFIG = {
     'weight_decay': 1e-5,
     'dropout_rate': 0.1,
     'loss_scaling': 100,
+    # Early stopping 설정
+    'early_stopping': True,    # Early stopping 사용 여부
+    'early_stopping_patience': 30,  # 몇 에포크 동안 개선 없으면 중단
+    'early_stopping_min_delta': 1e-6,  # 개선으로 간주할 최소 변화량
     # FT-Transformer 전용 설정
     'd_embed': 32,
     'n_heads': 4,
@@ -123,6 +127,9 @@ class FTTransformerQKD(nn.Module):
         self.num_features = num_features
         self.d_embed = d_embed
         
+        # CLS TOKEN: 학습 가능한 클래스 토큰 (전체 정보를 집약)
+        self.cls_token = nn.Parameter(torch.randn(1, 1, d_embed))
+        
         # 각 스칼라 변수를 임베딩 벡터로 변환
         # 각 변수마다 독립적인 Linear layer 사용 (더 풍부한 표현)
         self.feature_embeddings = nn.ModuleList([
@@ -144,9 +151,9 @@ class FTTransformerQKD(nn.Module):
         )
         
         # Output head (9개 출력: 8개 파라미터 + SKR)
-        # 8개 입력 × d_embed = 8 * d_embed 차원 활용
+        # CLS TOKEN의 d_embed 차원만 사용
         self.output_head = nn.Sequential(
-            nn.Linear(num_features * d_embed, 128),
+            nn.Linear(d_embed, 128),
             nn.ReLU(),
             nn.Dropout(dropout_rate),
             nn.Linear(128, 64),
@@ -178,14 +185,20 @@ class FTTransformerQKD(nn.Module):
         # 모든 임베딩을 쌓아서 sequence로 만듦
         x_embedded = torch.stack(embeddings, dim=1)  # (batch, num_features, d_embed)
         
-        # Transformer encoder로 전체 변수 간 상호작용 학습
-        x_transformed = self.transformer_encoder(x_embedded)  # (batch, num_features, d_embed)
+        # CLS TOKEN을 sequence의 첫 번째 위치에 추가
+        # cls_token: (1, 1, d_embed) → (batch, 1, d_embed)
+        cls_tokens = self.cls_token.expand(batch_size, -1, -1)  # (batch, 1, d_embed)
+        x_with_cls = torch.cat([cls_tokens, x_embedded], dim=1)  # (batch, num_features+1, d_embed)
         
-        # Flatten: 8개 입력의 정보를 모두 활용 (8 * d_embed 차원)
-        x_flattened = x_transformed.view(batch_size, -1)  # (batch, num_features * d_embed)
+        # Transformer encoder로 전체 변수 간 상호작용 학습
+        # CLS 토큰이 모든 feature 토큰과 attention을 통해 정보를 집약
+        x_transformed = self.transformer_encoder(x_with_cls)  # (batch, num_features+1, d_embed)
+        
+        # CLS TOKEN만 사용 (첫 번째 위치)
+        cls_output = x_transformed[:, 0, :]  # (batch, d_embed)
         
         # Output head로 최종 예측
-        output = self.output_head(x_flattened)  # (batch, output_size)
+        output = self.output_head(cls_output)  # (batch, output_size)
         
         # Sigmoid로 [0, 1] 범위로 제한
         output = self.sigmoid(output)
@@ -218,6 +231,7 @@ class FTTransformerTrainer:
         
         print(f"모델 구조:")
         print(f"  - 입력 변수: 8개")
+        print(f"  - CLS TOKEN: 사용 (전체 정보 집약)")
         print(f"  - 임베딩 차원: {config['d_embed']}")
         print(f"  - Attention heads: {config['n_heads']}")
         print(f"  - Transformer layers: {config['n_layers']}")
@@ -354,7 +368,17 @@ class FTTransformerTrainer:
             epochs = self.config['epochs']
         print(f"훈련 시작 - 에포크: {epochs}")
         
+        # Early stopping 설정
+        use_early_stopping = self.config.get('early_stopping', False)
+        early_stopping_patience = self.config.get('early_stopping_patience', 30)
+        early_stopping_min_delta = self.config.get('early_stopping_min_delta', 1e-6)
+        
+        if use_early_stopping:
+            print(f"Early stopping 활성화: patience={early_stopping_patience}, min_delta={early_stopping_min_delta}")
+        
         best_train_loss = float('inf')
+        best_epoch = 0
+        epochs_without_improvement = 0
         
         for epoch in tqdm(range(epochs), desc="훈련 진행"):
             # 훈련
@@ -364,19 +388,35 @@ class FTTransformerTrainer:
             # Learning rate scheduler 업데이트
             self.scheduler.step(train_loss)
             
-            # 최고 모델 저장
-            if train_loss < best_train_loss:
+            # 최고 모델 저장 및 개선 확인
+            improved = False
+            if train_loss < (best_train_loss - early_stopping_min_delta):
                 best_train_loss = train_loss
+                best_epoch = epoch + 1  # best epoch 기록
                 torch.save(self.model.state_dict(), 'best_qkd_fttransformer_model.pth')
+                epochs_without_improvement = 0
+                improved = True
+            else:
+                epochs_without_improvement += 1
             
             # 진행 상황 출력
-            if (epoch + 1) % 10 == 0:
+            if (epoch + 1) % 10 == 0 or improved:
                 current_lr = self.optimizer.param_groups[0]['lr']
-                print(f"에포크 {epoch+1}/{epochs} - 훈련 손실: {train_loss:.6f}, LR: {current_lr:.6f}")
+                early_stop_info = f", Early stop: {epochs_without_improvement}/{early_stopping_patience}" if use_early_stopping else ""
+                print(f"에포크 {epoch+1}/{epochs} - 훈련 손실: {train_loss:.6f}, LR: {current_lr:.6f}{early_stop_info}")
+            
+            # Early stopping 체크
+            if use_early_stopping and epochs_without_improvement >= early_stopping_patience:
+                print(f"\nEarly stopping 발동! {early_stopping_patience} 에포크 동안 개선이 없었습니다.")
+                print(f"최고 손실: {best_train_loss:.6f} (에포크 {best_epoch})")
+                if best_epoch < (epoch + 1):
+                    print(f"→ {epoch + 1 - best_epoch} 에포크 전의 체크포인트로 복원됩니다.")
+                break
         
         # 최고 모델 로드
         self.model.load_state_dict(torch.load('best_qkd_fttransformer_model.pth'))
-        print(f"최고 훈련 손실: {best_train_loss:.6f}")
+        print(f"\n최고 훈련 손실: {best_train_loss:.6f} (에포크 {best_epoch})")
+        print(f"총 훈련 에포크: {epoch + 1}/{epochs}")
     
     def evaluate(self, test_loader):
         """모델 평가"""
@@ -473,38 +513,6 @@ class FTTransformerTrainer:
         self.val_losses = checkpoint['val_losses']
         print(f"모델이 {path}에서 로드되었습니다.")
     
-    def get_attention_weights(self, X):
-        """Attention 가중치 추출 (변수 중요도 분석용)"""
-        self.model.eval()
-        
-        # 전처리
-        X_transformed = transform_input_features(X)
-        X_scaled = self.feature_scaler.transform(X_transformed)
-        X_tensor = torch.FloatTensor(X_scaled).to(self.device)
-        
-        # Forward pass with attention extraction
-        # Note: PyTorch TransformerEncoder doesn't expose attention by default
-        # This is a simplified version - full implementation would need custom encoder
-        print("참고: Attention 가중치 추출은 커스텀 구현이 필요합니다.")
-        print("현재는 각 변수의 임베딩 norm으로 중요도를 근사합니다.")
-        
-        with torch.no_grad():
-            batch_size = X_tensor.size(0)
-            embeddings = []
-            for i in range(8):
-                feature_value = X_tensor[:, i:i+1]
-                embedded = self.model.feature_embeddings[i](feature_value)
-                embeddings.append(embedded)
-            
-            x_embedded = torch.stack(embeddings, dim=1)
-            x_transformed = self.model.transformer_encoder(x_embedded)
-            
-            # 각 변수의 변환된 임베딩의 norm을 중요도로 사용
-            importance = torch.norm(x_transformed, dim=2).mean(dim=0)
-            importance = importance / importance.sum()
-            
-        return importance.cpu().numpy()
-
 def main():
     """메인 실행 함수"""
     # 설정값 사용
@@ -587,19 +595,9 @@ def main():
     # 모델 저장
     trainer.save_model(output_path)
     
-    # 변수 중요도 분석 (샘플 데이터로)
-    print("\n" + "=" * 80)
-    print("변수 중요도 분석 (첫 100개 샘플 기준)")
-    print("=" * 80)
-    sample_importance = trainer.get_attention_weights(X_train[:100])
-    var_names = ['eta_d', 'Y_0', 'e_d', 'alpha', 'zeta', 'eps_sec', 'eps_cor', 'N']
-    for i, (name, imp) in enumerate(zip(var_names, sample_importance)):
-        print(f"{name:12s}: {imp:.4f}")
-    
     print("\n" + "=" * 80)
     print(f"훈련 완료! 모델이 {output_path}에 저장되었습니다.")
     print("=" * 80)
 
 if __name__ == "__main__":
     main()
-
