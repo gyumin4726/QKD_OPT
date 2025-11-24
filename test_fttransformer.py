@@ -8,13 +8,14 @@ from train_fttransformer import (
     FTTransformerTrainer,
     set_seed,
     transform_input_features,
-    transform_target_outputs,
-    TRAINING_CONFIG
+    transform_target_outputs
 )
 
 # ============================================
 # ===== 여기서 테스트 설정을 변경하세요 =====
 # ============================================
+MODEL_PATH = "qkd_fttransformer_L100_E200_B128.pth"  # 평가할 모델 파일 경로
+TEST_CSV = "dataset/test_L100.csv"  # 테스트 데이터 CSV 파일 경로
 TEST_BATCH_SIZE = 256   # 테스트 배치 크기
 SHOW_DETAILED = True   # 상세 분석 출력 여부
 SHOW_IMPORTANCE = True  # 변수 중요도 분석 출력 여부
@@ -141,15 +142,10 @@ def print_detailed_analysis(df, predictions, actuals, output_columns):
 
 def main():
     # 설정값 사용
-    L = TRAINING_CONFIG['L']
+    model_path = MODEL_PATH
+    test_csv = TEST_CSV
     batch_size = TEST_BATCH_SIZE
     seed = 42  # 고정 시드
-    
-    # 경로 설정 (L 값 기반)
-    test_csv = f"dataset/test_L{L}.csv"
-    epochs = TRAINING_CONFIG['epochs']
-    batch_size_train = TRAINING_CONFIG['batch_size']
-    model_path = f"qkd_fttransformer_L{L}_E{epochs}_B{batch_size_train}.pth"
     
     if not os.path.exists(test_csv):
         raise FileNotFoundError(f"테스트 데이터셋을 찾을 수 없습니다: {test_csv}")
@@ -157,7 +153,9 @@ def main():
         raise FileNotFoundError(f"모델 파일을 찾을 수 없습니다: {model_path}")
 
     print("=" * 90)
-    print(f"QKD FT-Transformer 모델 테스트 (L={L} km)")
+    print(f"QKD FT-Transformer 모델 테스트")
+    print(f"모델 파일: {model_path}")
+    print(f"테스트 데이터: {test_csv}")
     print("=" * 90)
     
     set_seed(seed)

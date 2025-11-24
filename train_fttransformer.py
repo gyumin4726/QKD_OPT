@@ -94,12 +94,23 @@ def transform_input_features(X):
 def transform_target_outputs(y):
     """
     모델 출력(SKR 포함)에 대해 학습 및 추론 단계에서 동일하게 적용할 변환.
+    - p_mu, p_nu, p_vac: 비율(ratio)로 변환 (합=1)
     - SKR: log10 변환 (0 혹은 음수 방지를 위해 최소값 고정)
     """
     y_transformed = np.array(y, dtype=np.float64, copy=True)
 
     if y_transformed.ndim == 1:
         y_transformed = y_transformed.reshape(1, -1)
+
+    # p_mu, p_nu, p_vac를 비율로 변환 (인덱스 3, 4, 5)
+    p_mu = y_transformed[:, 3]
+    p_nu = y_transformed[:, 4]
+    p_vac = y_transformed[:, 5]
+    sum_p = p_mu + p_nu + p_vac
+    
+    y_transformed[:, 3] = p_mu / sum_p   # r_mu
+    y_transformed[:, 4] = p_nu / sum_p    # r_nu
+    y_transformed[:, 5] = p_vac / sum_p   # r_vac
 
     # 9번째 컬럼(SKR)에 로그 변환 적용
     y_transformed[:, -1] = np.log10(np.clip(y_transformed[:, -1], a_min=1e-30, a_max=None))
@@ -285,20 +296,23 @@ class FTTransformerTrainer:
         return X, y
     
     def preprocess_data(self, X, y):
-        """데이터 전처리 (기존과 동일)"""
+        """데이터 전처리"""
         print("데이터 전처리 중...")
         
         # 입력 변수 변환
         X_transformed = transform_input_features(X)
         
-        print("변환 적용:")
+        print("입력 변환 적용:")
         print("  - Y_0, eps_sec, eps_cor, N: log10(x) 변환")
-        print("  - eta_d, e_d, alpha, zeta: 원본 유지 (StandardScaler로 정규화)")
+        print("  - eta_d, e_d, alpha, zeta: 원본 유지 (MinMaxScaler로 정규화)")
         
-        # 입력 데이터 정규화 (StandardScaler)
+        # 입력 데이터 정규화 (MinMaxScaler)
         X_scaled = self.feature_scaler.fit_transform(X_transformed)
         
-        # 출력 데이터 전처리 - SKR에 로그 변환 적용
+        # 출력 데이터 전처리 - p_mu/p_nu/p_vac를 비율로 변환, SKR에 로그 변환 적용
+        print("출력 변환 적용:")
+        print("  - p_mu, p_nu, p_vac: 비율(ratio)로 변환 (합=1)")
+        print("  - SKR: log10(x) 변환")
         y_transformed = transform_target_outputs(y)
         y_scaled = self.target_scaler.fit_transform(y_transformed)
         
@@ -443,6 +457,25 @@ class FTTransformerTrainer:
         predictions_original[:, -1] = 10 ** predictions_original[:, -1]
         targets_original[:, -1] = 10 ** targets_original[:, -1]
         
+        # 비율(r_mu, r_nu, r_vac) 재정규화 (합=1 보장)
+        # predictions
+        r_mu_pred = predictions_original[:, 3]
+        r_nu_pred = predictions_original[:, 4]
+        r_vac_pred = predictions_original[:, 5]
+        sum_r_pred = r_mu_pred + r_nu_pred + r_vac_pred
+        predictions_original[:, 3] = r_mu_pred / sum_r_pred
+        predictions_original[:, 4] = r_nu_pred / sum_r_pred
+        predictions_original[:, 5] = r_vac_pred / sum_r_pred
+        
+        # targets (역변환된 값도 재정규화)
+        r_mu_target = targets_original[:, 3]
+        r_nu_target = targets_original[:, 4]
+        r_vac_target = targets_original[:, 5]
+        sum_r_target = r_mu_target + r_nu_target + r_vac_target
+        targets_original[:, 3] = r_mu_target / sum_r_target
+        targets_original[:, 4] = r_nu_target / sum_r_target
+        targets_original[:, 5] = r_vac_target / sum_r_target
+        
         # 평가용 MSE 계산
         eval_mse = np.mean((predictions_original - targets_original) ** 2)
         
@@ -478,8 +511,17 @@ class FTTransformerTrainer:
         # 역정규화
         predictions_original = self.target_scaler.inverse_transform(predictions)
         
-        # SKR에 대한 역변환
+        # SKR에 대한 역변환 (log10 -> 원본 스케일)
         predictions_original[:, -1] = 10 ** predictions_original[:, -1]
+        
+        # 비율(r_mu, r_nu, r_vac) 재정규화 (합=1 보장)
+        r_mu = predictions_original[:, 3]
+        r_nu = predictions_original[:, 4]
+        r_vac = predictions_original[:, 5]
+        sum_r = r_mu + r_nu + r_vac
+        predictions_original[:, 3] = r_mu / sum_r
+        predictions_original[:, 4] = r_nu / sum_r
+        predictions_original[:, 5] = r_vac / sum_r
         
         return predictions_original
     
