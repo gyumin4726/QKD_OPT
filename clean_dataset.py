@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-def clean_dataset(input_file='./dataset/qkd_dataset_L100.csv', output_file='qkd_dataset_cleaned_L100.csv'):
+def clean_dataset(input_file='./dataset/qkd_dataset_L20.csv', output_file='./dataset/qkd_dataset_cleaned_L20.csv'):
     """SKR이 -1부터 -10까지의 행들을 제거"""
     
     print(f"데이터셋 로드 중: {input_file}")
