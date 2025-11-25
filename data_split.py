@@ -19,6 +19,7 @@ def split_qkd_dataset(input_file='./dataset/qkd_dataset_cleaned_L20.csv', test_s
     
     print(f"전체 데이터 크기: {len(df)} 샘플")
     
+    
     # 입력 파일명에서 L 값 추출
     L_match = re.search(r'_L(\d+)', input_file)
     if L_match:
