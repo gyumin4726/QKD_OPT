@@ -20,6 +20,7 @@ TRAINING_CONFIG = {
     'L': 100,              # 거리 L (km)
     'epochs': 200,         # 훈련 에포크 수
     'batch_size': 128,      # 배치 크기
+    'device': 'auto',      # 디바이스 선택: 'cpu', 'cuda', 'auto' (auto는 GPU 사용 가능하면 GPU, 없으면 CPU)
     # 최적화 설정
     'learning_rate': 0.001,
     'weight_decay': 1e-5,
@@ -234,9 +235,26 @@ class FTTransformerTrainer:
             config = TRAINING_CONFIG
         self.config = config
         
-        # GPU 사용 가능하면 GPU, 없으면 CPU 사용
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        # 디바이스 설정
+        device_config = config.get('device', 'auto')
+        if device_config == 'auto':
+            # GPU 사용 가능하면 GPU, 없으면 CPU 사용
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        elif device_config == 'cuda':
+            if torch.cuda.is_available():
+                self.device = torch.device('cuda')
+            else:
+                print("경고: CUDA를 사용할 수 없습니다. CPU를 사용합니다.")
+                self.device = torch.device('cpu')
+        elif device_config == 'cpu':
+            self.device = torch.device('cpu')
+        else:
+            raise ValueError(f"잘못된 device 설정: {device_config}. 'cpu', 'cuda', 또는 'auto'를 사용하세요.")
+        
         print(f"사용 중인 디바이스: {self.device}")
+        if self.device.type == 'cuda':
+            print(f"GPU 이름: {torch.cuda.get_device_name(0)}")
+            print(f"GPU 메모리: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
         if torch.cuda.is_available():
             print(f"GPU 이름: {torch.cuda.get_device_name(0)}")
             print(f"GPU 메모리: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
