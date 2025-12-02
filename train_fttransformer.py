@@ -225,8 +225,12 @@ class FTTransformerTrainer:
             config = TRAINING_CONFIG
         self.config = config
         
-        self.device = torch.device('cpu')
+        # GPU 사용 가능하면 GPU, 없으면 CPU 사용
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         print(f"사용 중인 디바이스: {self.device}")
+        if torch.cuda.is_available():
+            print(f"GPU 이름: {torch.cuda.get_device_name(0)}")
+            print(f"GPU 메모리: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
         
         # FT-Transformer 모델 초기화
         self.model = FTTransformerQKD(
