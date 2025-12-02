@@ -50,6 +50,15 @@ def set_seed(seed=42):
     # PyTorch CPU
     torch.manual_seed(seed)
     
+    # PyTorch GPU (CUDA)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)  # 멀티 GPU인 경우
+    
+    # cuDNN 결정적 모드 설정 (재현성 향상, 성능 약간 저하 가능)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    
     # 환경 변수로도 설정 (일부 라이브러리용)
     os.environ['PYTHONHASHSEED'] = str(seed)
 
