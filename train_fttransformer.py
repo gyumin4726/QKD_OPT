@@ -20,12 +20,15 @@ TRAINING_CONFIG = {
     'L': 100,              # 거리 L (km)
     'epochs': 200,         # 훈련 에포크 수
     'batch_size': 128,      # 배치 크기
-    'device': 'auto',      # 디바이스 선택: 'cpu', 'cuda', 'auto' (auto는 GPU 사용 가능하면 GPU, 없으면 CPU)
+    'device': 'cuda',      # 디바이스 선택: 'cpu', 'cuda', 'auto' (auto는 GPU 사용 가능하면 GPU, 없으면 CPU)
     # 최적화 설정
-    'learning_rate': 0.001,
+    'learning_rate': 0.0005,
     'weight_decay': 1e-5,
     'dropout_rate': 0.1,
     'loss_scaling': 100,
+    # Learning rate scheduler 설정
+    'scheduler_patience': 10,      # LR scheduler patience (몇 에포크 동안 개선 없으면 LR 감소)
+    'scheduler_factor': 0.5,        # LR 감소 비율 (새 LR = 기존 LR * factor)
     # Early stopping 설정
     'early_stopping': True,    # Early stopping 사용 여부
     'early_stopping_patience': 30,  # 몇 에포크 동안 개선 없으면 중단
@@ -289,8 +292,8 @@ class FTTransformerTrainer:
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer, 
             mode='min', 
-            factor=0.5, 
-            patience=10
+            factor=config.get('scheduler_factor', 0.5), 
+            patience=config.get('scheduler_patience', 10)
         )
         self.criterion = nn.MSELoss()
         
@@ -407,8 +410,30 @@ class FTTransformerTrainer:
         
         return total_loss / len(train_loader)
     
-    def train(self, train_loader, epochs=None):
-        """모델 훈련"""
+    def compute_test_loss(self, test_loader):
+        """테스트 데이터에 대한 손실 계산 (정규화된 데이터 기준)"""
+        self.model.eval()
+        total_loss = 0
+        
+        with torch.no_grad():
+            for data, target in test_loader:
+                data, target = data.to(self.device), target.to(self.device)
+                output = self.model(data)
+                
+                # 가중치가 적용된 손실 함수 계산
+                loss = self.weighted_loss(output, target)
+                total_loss += loss.item()
+        
+        return total_loss / len(test_loader)
+    
+    def train(self, train_loader, test_loader=None, epochs=None):
+        """모델 훈련
+        
+        Args:
+            train_loader: 훈련 데이터 로더
+            test_loader: 테스트 데이터 로더 (None이면 train loss 기준, 있으면 test loss 기준)
+            epochs: 훈련 에포크 수
+        """
         if epochs is None:
             epochs = self.config['epochs']
         print(f"훈련 시작 - 에포크: {epochs}")
@@ -421,6 +446,10 @@ class FTTransformerTrainer:
         if use_early_stopping:
             print(f"Early stopping 활성화: patience={early_stopping_patience}, min_delta={early_stopping_min_delta}")
         
+        if test_loader is not None:
+            print("테스트 데이터를 validation set처럼 사용 (test loss 기준 스케줄링 및 early stopping)")
+        
+        best_test_loss = float('inf') if test_loader is not None else None
         best_train_loss = float('inf')
         best_epoch = 0
         epochs_without_improvement = 0
@@ -430,37 +459,73 @@ class FTTransformerTrainer:
             train_loss = self.train_epoch(train_loader)
             self.train_losses.append(train_loss)
             
-            # Learning rate scheduler 업데이트
-            self.scheduler.step(train_loss)
-            
-            # 최고 모델 저장 및 개선 확인
-            improved = False
-            if train_loss < (best_train_loss - early_stopping_min_delta):
-                best_train_loss = train_loss
-                best_epoch = epoch + 1  # best epoch 기록
-                torch.save(self.model.state_dict(), 'best_qkd_fttransformer_model.pth')
-                epochs_without_improvement = 0
-                improved = True
+            # 테스트 데이터로 평가 (매 에포크마다)
+            if test_loader is not None:
+                test_loss = self.compute_test_loss(test_loader)
+                self.val_losses.append(test_loss)
+                
+                # Learning rate scheduler 업데이트 (test loss 기준)
+                self.scheduler.step(test_loss)
+                
+                # 최고 모델 저장 및 개선 확인 (test loss 기준)
+                improved = False
+                if test_loss < (best_test_loss - early_stopping_min_delta):
+                    best_test_loss = test_loss
+                    best_epoch = epoch + 1  # best epoch 기록
+                    torch.save(self.model.state_dict(), 'best_qkd_fttransformer_model.pth')
+                    epochs_without_improvement = 0
+                    improved = True
+                else:
+                    epochs_without_improvement += 1
+                
+                # 진행 상황 출력
+                if (epoch + 1) % 10 == 0 or improved:
+                    current_lr = self.optimizer.param_groups[0]['lr']
+                    early_stop_info = f", Early stop: {epochs_without_improvement}/{early_stopping_patience}" if use_early_stopping else ""
+                    print(f"에포크 {epoch+1}/{epochs} - 훈련 손실: {train_loss:.6f}, 테스트 손실: {test_loss:.6f}, LR: {current_lr:.6f}{early_stop_info}")
+                
+                # Early stopping 체크
+                if use_early_stopping and epochs_without_improvement >= early_stopping_patience:
+                    print(f"\nEarly stopping 발동! {early_stopping_patience} 에포크 동안 개선이 없었습니다.")
+                    print(f"최고 테스트 손실: {best_test_loss:.6f} (에포크 {best_epoch})")
+                    if best_epoch < (epoch + 1):
+                        print(f"→ {epoch + 1 - best_epoch} 에포크 전의 체크포인트로 복원됩니다.")
+                    break
             else:
-                epochs_without_improvement += 1
-            
-            # 진행 상황 출력
-            if (epoch + 1) % 10 == 0 or improved:
-                current_lr = self.optimizer.param_groups[0]['lr']
-                early_stop_info = f", Early stop: {epochs_without_improvement}/{early_stopping_patience}" if use_early_stopping else ""
-                print(f"에포크 {epoch+1}/{epochs} - 훈련 손실: {train_loss:.6f}, LR: {current_lr:.6f}{early_stop_info}")
-            
-            # Early stopping 체크
-            if use_early_stopping and epochs_without_improvement >= early_stopping_patience:
-                print(f"\nEarly stopping 발동! {early_stopping_patience} 에포크 동안 개선이 없었습니다.")
-                print(f"최고 손실: {best_train_loss:.6f} (에포크 {best_epoch})")
-                if best_epoch < (epoch + 1):
-                    print(f"→ {epoch + 1 - best_epoch} 에포크 전의 체크포인트로 복원됩니다.")
-                break
+                # 테스트 데이터가 없으면 기존 방식 (train loss 기준)
+                self.scheduler.step(train_loss)
+                
+                # 최고 모델 저장 및 개선 확인
+                improved = False
+                if train_loss < (best_train_loss - early_stopping_min_delta):
+                    best_train_loss = train_loss
+                    best_epoch = epoch + 1
+                    torch.save(self.model.state_dict(), 'best_qkd_fttransformer_model.pth')
+                    epochs_without_improvement = 0
+                    improved = True
+                else:
+                    epochs_without_improvement += 1
+                
+                # 진행 상황 출력
+                if (epoch + 1) % 10 == 0 or improved:
+                    current_lr = self.optimizer.param_groups[0]['lr']
+                    early_stop_info = f", Early stop: {epochs_without_improvement}/{early_stopping_patience}" if use_early_stopping else ""
+                    print(f"에포크 {epoch+1}/{epochs} - 훈련 손실: {train_loss:.6f}, LR: {current_lr:.6f}{early_stop_info}")
+                
+                # Early stopping 체크
+                if use_early_stopping and epochs_without_improvement >= early_stopping_patience:
+                    print(f"\nEarly stopping 발동! {early_stopping_patience} 에포크 동안 개선이 없었습니다.")
+                    print(f"최고 훈련 손실: {best_train_loss:.6f} (에포크 {best_epoch})")
+                    if best_epoch < (epoch + 1):
+                        print(f"→ {epoch + 1 - best_epoch} 에포크 전의 체크포인트로 복원됩니다.")
+                    break
         
         # 최고 모델 로드
         self.model.load_state_dict(torch.load('best_qkd_fttransformer_model.pth'))
-        print(f"\n최고 훈련 손실: {best_train_loss:.6f} (에포크 {best_epoch})")
+        if test_loader is not None:
+            print(f"\n최고 테스트 손실: {best_test_loss:.6f} (에포크 {best_epoch})")
+        else:
+            print(f"\n최고 훈련 손실: {best_train_loss:.6f} (에포크 {best_epoch})")
         print(f"총 훈련 에포크: {epoch + 1}/{epochs}")
     
     def evaluate(self, test_loader):
@@ -634,19 +699,7 @@ def main():
     # 데이터 전처리
     X_train_scaled, y_train_scaled = trainer.preprocess_data(X_train, y_train)
     
-    # DataLoader 생성
-    train_loader = trainer.create_data_loaders(X_train_scaled, y_train_scaled)
-    
-    # 모델 훈련
-    print("\n모델 훈련 시작...")
-    start_time = time.time()
-    trainer.train(train_loader, epochs=config.get('epochs'))
-    training_time = time.time() - start_time
-    
-    print(f"\n훈련 완료! 소요 시간: {training_time:.2f}초")
-    
-    # 테스트 데이터 평가
-    print("\n테스트 데이터 평가 중...")
+    # 테스트 데이터도 전처리 (훈련 중 평가를 위해)
     X_test = test_df[input_columns].to_numpy()
     y_test = test_df[output_columns].to_numpy()
     
@@ -655,8 +708,21 @@ def main():
     y_test_transformed = transform_target_outputs(y_test)
     y_test_scaled = trainer.target_scaler.transform(y_test_transformed)
     
+    # DataLoader 생성
+    train_loader = trainer.create_data_loaders(X_train_scaled, y_train_scaled)
     test_dataset = QKDDataset(X_test_scaled, y_test_scaled)
     test_loader = DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=False)
+    
+    # 모델 훈련 (테스트 데이터를 validation set처럼 사용)
+    print("\n모델 훈련 시작...")
+    start_time = time.time()
+    trainer.train(train_loader, test_loader=test_loader, epochs=config.get('epochs'))
+    training_time = time.time() - start_time
+    
+    print(f"\n훈련 완료! 소요 시간: {training_time:.2f}초")
+    
+    # 최종 테스트 데이터 평가
+    print("\n최종 테스트 데이터 평가 중...")
     
     metrics = trainer.evaluate(test_loader)
     print(f"테스트 MSE (전체): {metrics['overall_mse']:.6e}")
