@@ -25,7 +25,7 @@ TRAINING_CONFIG = {
     'learning_rate': 0.0005,
     'weight_decay': 1e-5,
     'dropout_rate': 0.1,
-    'loss_scaling': 100,
+    'loss_scaling': 1,
     # Learning rate scheduler 설정
     'scheduler_patience': 10,      # LR scheduler patience (몇 에포크 동안 개선 없으면 LR 감소)
     'scheduler_factor': 0.5,        # LR 감소 비율 (새 LR = 기존 LR * factor)
@@ -34,10 +34,10 @@ TRAINING_CONFIG = {
     'early_stopping_patience': 30,  # 몇 에포크 동안 개선 없으면 중단
     'early_stopping_min_delta': 1e-6,  # 개선으로 간주할 최소 변화량
     # FT-Transformer 전용 설정
-    'd_embed': 32,
+    'd_embed': 128,
     'n_heads': 4,
-    'n_layers': 3,
-    'dim_feedforward': 128
+    'n_layers': 4,
+    'dim_feedforward': 256
 }
 # ============================================
 
@@ -306,7 +306,7 @@ class FTTransformerTrainer:
         self.val_losses = []
         
         # 파라미터별 가중치 설정 (SKR에 높은 가중치)
-        self.param_weights = torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1000.0]).to(self.device)
+        self.param_weights = torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 100.0]).to(self.device)
         print(f"파라미터 가중치: SKR={self.param_weights[-1]:.1f}x, 나머지={self.param_weights[0]:.1f}x")
         
     def load_data(self, csv_path):
