@@ -18,8 +18,8 @@ warnings.filterwarnings('ignore')
 TRAINING_CONFIG = {
     # 기본 설정
     'L': 100,              # 거리 L (km)
-    'epochs': 200,         # 훈련 에포크 수
-    'batch_size': 128,      # 배치 크기
+    'epochs': 500,         # 훈련 에포크 수
+    'batch_size': 64,      # 배치 크기
     'device': 'cuda',      # 디바이스 선택: 'cpu', 'cuda', 'auto' (auto는 GPU 사용 가능하면 GPU, 없으면 CPU)
     # 최적화 설정
     'learning_rate': 0.0005,
@@ -256,9 +256,6 @@ class FTTransformerTrainer:
         
         print(f"사용 중인 디바이스: {self.device}")
         if self.device.type == 'cuda':
-            print(f"GPU 이름: {torch.cuda.get_device_name(0)}")
-            print(f"GPU 메모리: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
-        if torch.cuda.is_available():
             print(f"GPU 이름: {torch.cuda.get_device_name(0)}")
             print(f"GPU 메모리: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
         
