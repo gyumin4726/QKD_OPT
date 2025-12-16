@@ -24,10 +24,9 @@ class QKDDataGenerator:
         self.fixed_L = L
         
         # 기본 파라미터 범위 설정
-        # 배경 오류율(e_0)은 0.5로 고정, 변수 관 관계는 대표님이 주신다고 하심, L별로 따라 모델을 만들어서 학습
+        # 배경 오류율(e_0)은 0.5로 고정, 다크 카운트율(Y_0)은 0으로 고정
         self.param_ranges = {
             'eta_d': (0.02, 0.08),           # 탐지기 효율 (2-8%, 기본값 4.5%)
-            'Y_0': (1e-7, 1e-5),             # 다크 카운트율 (기본값 1.7e-6)
             'e_d': (0.02, 0.05),             # 오정렬률 (2-5%, 기본값 3.3%)
             'alpha': (0.18, 0.24),           # 광섬유 감쇠 계수 (기본값 0.21)
             'zeta': (1.1, 1.4),              # 오류 정정 효율 (기본값 1.22)
@@ -36,9 +35,10 @@ class QKDDataGenerator:
             'N': (1e9, 1e11)                 # 광 펄스 수 (기본값 1e10)
         }
         
-        # 고정 파라미터: e_0(배경 오류율)는 항상 0.5로 고정
+        # 고정 파라미터: e_0(배경 오류율)는 항상 0.5로 고정, Y_0(다크 카운트율)은 0으로 고정
         self.fixed_params = {
-            'e_0': 0.5                       # 배경 오류율 고정값
+            'e_0': 0.5,                      # 배경 오류율 고정값
+            'Y_0': 0.0                       # 다크 카운트율 고정값 (0으로 설정)
         }
         
         print(f"L={self.fixed_L} km로 고정하여 데이터셋 생성")
@@ -69,7 +69,7 @@ class QKDDataGenerator:
                 
                 # 변수 파라미터 샘플링
                 for param, (min_val, max_val) in self.param_ranges.items():
-                    if param in ['eps_sec', 'eps_cor', 'N', 'Y_0']:
+                    if param in ['eps_sec', 'eps_cor', 'N']:
                         # 로그 스케일로 샘플링
                         combo[param] = 10 ** np.random.uniform(
                             np.log10(min_val), np.log10(max_val)
@@ -88,37 +88,33 @@ class QKDDataGenerator:
             L = self.fixed_L
             
             for eta_d in np.linspace(*self.param_ranges['eta_d'], n_per_param):
-                for Y_0 in np.logspace(
-                    np.log10(self.param_ranges['Y_0'][0]),
-                    np.log10(self.param_ranges['Y_0'][1]),
-                    n_per_param
-                ):
-                    for e_d in np.linspace(*self.param_ranges['e_d'], n_per_param):
-                        for alpha in np.linspace(*self.param_ranges['alpha'], n_per_param):
-                            for zeta in np.linspace(*self.param_ranges['zeta'], n_per_param):
-                                # e_0는 고정값 사용
-                                e_0 = self.fixed_params['e_0']
-                                for eps_sec in np.logspace(
-                                        np.log10(self.param_ranges['eps_sec'][0]),
-                                        np.log10(self.param_ranges['eps_sec'][1]),
+                for e_d in np.linspace(*self.param_ranges['e_d'], n_per_param):
+                    for alpha in np.linspace(*self.param_ranges['alpha'], n_per_param):
+                        for zeta in np.linspace(*self.param_ranges['zeta'], n_per_param):
+                            # e_0와 Y_0는 고정값 사용
+                            e_0 = self.fixed_params['e_0']
+                            Y_0 = self.fixed_params['Y_0']
+                            for eps_sec in np.logspace(
+                                    np.log10(self.param_ranges['eps_sec'][0]),
+                                    np.log10(self.param_ranges['eps_sec'][1]),
+                                    n_per_param
+                                ):
+                                    for eps_cor in np.logspace(
+                                        np.log10(self.param_ranges['eps_cor'][0]),
+                                        np.log10(self.param_ranges['eps_cor'][1]),
                                         n_per_param
                                     ):
-                                        for eps_cor in np.logspace(
-                                            np.log10(self.param_ranges['eps_cor'][0]),
-                                            np.log10(self.param_ranges['eps_cor'][1]),
+                                        for N in np.logspace(
+                                            np.log10(self.param_ranges['N'][0]),
+                                            np.log10(self.param_ranges['N'][1]),
                                             n_per_param
                                         ):
-                                            for N in np.logspace(
-                                                np.log10(self.param_ranges['N'][0]),
-                                                np.log10(self.param_ranges['N'][1]),
-                                                n_per_param
-                                            ):
-                                                combinations.append({
-                                                    'L': L, 'eta_d': eta_d, 'Y_0': Y_0,
-                                                    'e_d': e_d, 'alpha': alpha, 'zeta': zeta,
-                                                    'e_0': e_0, 'eps_sec': eps_sec,
-                                                    'eps_cor': eps_cor, 'N': N
-                                                })
+                                            combinations.append({
+                                                'L': L, 'eta_d': eta_d, 'Y_0': Y_0,
+                                                'e_d': e_d, 'alpha': alpha, 'zeta': zeta,
+                                                'e_0': e_0, 'eps_sec': eps_sec,
+                                                'eps_cor': eps_cor, 'N': N
+                                            })
         
         return combinations[:n_samples]  # 요청한 수만큼만 반환
     
@@ -199,7 +195,7 @@ class QKDDataGenerator:
             # dataset 폴더가 없으면 생성
             dataset_dir = 'dataset'
             os.makedirs(dataset_dir, exist_ok=True)
-            save_path = os.path.join(dataset_dir, f'qkd_dataset_L{self.fixed_L}.csv')
+            save_path = os.path.join(dataset_dir, f'qkd_L{self.fixed_L}_Y0_0.csv')
         else:
             # 지정된 경로도 dataset 폴더 안에 저장 (경로가 이미 지정된 경우는 그대로 사용)
             if not os.path.isabs(save_path) and not save_path.startswith('dataset/'):
@@ -222,11 +218,10 @@ class QKDDataGenerator:
                 result = self.optimize_parameters(input_params, max_generations)
                 
                 # 데이터 포인트 생성 (CSV용으로 평면화)
-                # L과 e_0는 고정값이므로 CSV에 저장하지 않음 (파일명에 L 값이 포함되어 있음)
+                # L, e_0, Y_0은 고정값이므로 CSV에 저장하지 않음 (파일명에 L과 Y0_0이 포함되어 있음)
                 data_point = {
-                    # 입력 파라미터들 (L과 e_0 제외 - 고정값)
+                    # 입력 파라미터들 (L, e_0, Y_0 제외 - 고정값)
                     'eta_d': input_params['eta_d'],
-                    'Y_0': input_params['Y_0'],
                     'e_d': input_params['e_d'],
                     'alpha': input_params['alpha'],
                     'zeta': input_params['zeta'],
