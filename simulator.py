@@ -82,6 +82,12 @@ def skr_simulator(_, solution, __, config=None, **kwargs):
 
     if mu <= nu : 
         return -10
+    
+    if nu <= vac:
+        return -11  # nu > vac 제약 위반
+    
+    if p_mu <= p_nu or p_nu <= p_vac:
+        return -12  # p_mu > p_nu > p_vac 제약 위반
 
     # config가 제공되면 config에서 값 추출, 아니면 kwargs에서 추출
     if config is not None:
