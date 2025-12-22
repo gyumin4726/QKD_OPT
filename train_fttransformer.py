@@ -23,7 +23,7 @@ TRAINING_CONFIG = {
     'device': 'cuda',      # 디바이스 선택: 'cpu', 'cuda', 'auto' (auto는 GPU 사용 가능하면 GPU, 없으면 CPU)
     # 최적화 설정
     'learning_rate': 0.0005,
-    'weight_decay': 1e-5,
+    'weight_decay': 5e-6,
     'dropout_rate': 0.1,
     'loss_scaling': 1,
     # Learning rate scheduler 설정
