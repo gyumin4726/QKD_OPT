@@ -11,7 +11,7 @@ __pycache__/
 *.so
 
 *.csv
-*.pth
+# *.pth
 *.txt
 
 # Distribution / packaging
@@ -60,7 +60,7 @@ coverage.xml
 cover/
 
 # PDF files
-*.pdf
+# *.pdf
 
 # Translations
 *.mo
