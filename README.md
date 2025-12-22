@@ -177,3 +177,19 @@ pip install -r requirements.txt
 - 로그 변환: `eps_sec`, `eps_cor`, `N`, `skr`
 - 정규화: MinMaxScaler (입력/출력 모두)
 - FT-Transformer 권장 (MLP 대비 성능 우수, 학습 시간 다소 증가)
+
+## 참고문헌
+
+1. Yin, H. L., Zhou, M. G., Gu, J., Xie, Y. M., Lu, Y. S., & Chen, Z. B. (2020). Tight security bounds for decoy-state quantum key distribution. *Scientific Reports*, *10*(1), 14312. https://doi.org/10.1038/s41598-020-71107-6
+
+2. Wang, W., & Lo, H. K. (2019). Machine Learning for Optimal Parameter Prediction in Quantum Key Distribution. *arXiv preprint arXiv:1812.07724*. https://doi.org/10.48550/arXiv.1812.07724
+
+3. Mahmud, I., & Abdelhadi, A. (2025). Artificial Intelligence in Quantum Communications: A Comprehensive Survey. *IEEE Access*, *13*, 121175-121210. https://doi.org/10.1109/ACCESS.2025.3585799
+
+4. Gorishniy, Y., Rubachev, I., Khrulkov, V., & Babenko, A. (2021). Revisiting Deep Learning Models for Tabular Data. *Advances in Neural Information Processing Systems*, *34*, 18932-18943. https://doi.org/10.48550/arXiv.2106.11959
+
+5. Somepalli, G., Schwarzschild, A., Goldblum, M., Bruss, C. B., & Goldstein, T. (2021). SAINT: Improved Neural Networks for Tabular Data via Row Attention and Contrastive Pre-Training. *arXiv preprint arXiv:2106.01342*. https://doi.org/10.48550/arXiv.2106.01342
+
+6. Decker, T., Gallezot, M., Kerstan, S. F., Paesano, A., Ginter, A., & Wormsbecher, W. (2025). Quantum key distribution as a quantum machine learning task. *npj Quantum Information*, *11*(1), 140. https://doi.org/10.1038/s41534-025-01088-9
+
+7. Long, N. K., Malaney, R., & Grant, K. J. (2023). A Survey of Machine Learning Assisted Continuous-Variable Quantum Key Distribution. *Information*, *14*(10), 553. https://doi.org/10.3390/info14100553
