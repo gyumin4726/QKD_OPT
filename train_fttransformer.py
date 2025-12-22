@@ -47,14 +47,22 @@ L = 100                            # 거리 (km)
 EPOCHS = 500                       # 훈련 에포크 수
 BATCH_SIZE = 64                    # 배치 크기
 
+# 데이터 설정
+INCLUDE_Y_0 = False                # Y_0를 입력 변수로 포함할지 여부
+
 # 데이터 경로 설정
 TRAIN_CSV = f"dataset/train_L{L}.csv"                             # 훈련 데이터 경로
 TEST_CSV = f"dataset/test_L{L}.csv"                               # 테스트 데이터 경로
 OUTPUT_MODEL = f"qkd_fttransformer_L{L}_E{EPOCHS}_B{BATCH_SIZE}.pth"  # 출력 모델 경로
 
-# 데이터 컬럼 정의 (Y_0, e_0, L은 고정값이므로 CSV에 없음)
-INPUT_COLUMNS = ['eta_d', 'e_d', 'alpha', 'zeta', 'eps_sec', 'eps_cor', 'N']
+# 데이터 컬럼 정의 (Y_0, e_0, L은 고정값이므로 CSV에 없을 수 있음)
+if INCLUDE_Y_0:
+    INPUT_COLUMNS = ['eta_d', 'Y_0', 'e_d', 'alpha', 'zeta', 'eps_sec', 'eps_cor', 'N']
+else:
+    INPUT_COLUMNS = ['eta_d', 'e_d', 'alpha', 'zeta', 'eps_sec', 'eps_cor', 'N']
+
 OUTPUT_COLUMNS = ['mu', 'nu', 'vac', 'p_mu', 'p_nu', 'p_vac', 'p_X', 'q_X', 'skr']
+NUM_INPUT_FEATURES = len(INPUT_COLUMNS)
 
 # 재현성 설정
 RANDOM_SEED = 42                   # 랜덤 시드
@@ -126,22 +134,31 @@ def set_seed(seed=42):
 
 def transform_input_features(X):
     """
-    모델 입력 특성 변환: eps_sec, eps_cor, N은 로그 변환
-    INPUT_COLUMNS = ['eta_d', 'e_d', 'alpha', 'zeta', 'eps_sec', 'eps_cor', 'N']
+    모델 입력 특성 변환: Y_0 (옵션), eps_sec, eps_cor, N은 로그 변환
     """
     X_transformed = np.array(X, dtype=np.float64, copy=True)
 
     if X_transformed.ndim == 1:
         X_transformed = X_transformed.reshape(1, -1)
 
-    # eps_sec (인덱스 4): log10 변환
-    X_transformed[:, 4] = np.log10(np.clip(X_transformed[:, 4], a_min=1e-30, a_max=None))
-    
-    # eps_cor (인덱스 5): log10 변환
-    X_transformed[:, 5] = np.log10(np.clip(X_transformed[:, 5], a_min=1e-30, a_max=None))
-    
-    # N (인덱스 6): log10 변환
-    X_transformed[:, 6] = np.log10(np.clip(X_transformed[:, 6], a_min=1.0, a_max=None))
+    if INCLUDE_Y_0:
+        # Y_0 포함: ['eta_d', 'Y_0', 'e_d', 'alpha', 'zeta', 'eps_sec', 'eps_cor', 'N']
+        # Y_0 (인덱스 1): log10 변환
+        X_transformed[:, 1] = np.log10(np.clip(X_transformed[:, 1], a_min=1e-20, a_max=None))
+        # eps_sec (인덱스 5): log10 변환
+        X_transformed[:, 5] = np.log10(np.clip(X_transformed[:, 5], a_min=1e-30, a_max=None))
+        # eps_cor (인덱스 6): log10 변환
+        X_transformed[:, 6] = np.log10(np.clip(X_transformed[:, 6], a_min=1e-30, a_max=None))
+        # N (인덱스 7): log10 변환
+        X_transformed[:, 7] = np.log10(np.clip(X_transformed[:, 7], a_min=1.0, a_max=None))
+    else:
+        # Y_0 제외: ['eta_d', 'e_d', 'alpha', 'zeta', 'eps_sec', 'eps_cor', 'N']
+        # eps_sec (인덱스 4): log10 변환
+        X_transformed[:, 4] = np.log10(np.clip(X_transformed[:, 4], a_min=1e-30, a_max=None))
+        # eps_cor (인덱스 5): log10 변환
+        X_transformed[:, 5] = np.log10(np.clip(X_transformed[:, 5], a_min=1e-30, a_max=None))
+        # N (인덱스 6): log10 변환
+        X_transformed[:, 6] = np.log10(np.clip(X_transformed[:, 6], a_min=1.0, a_max=None))
 
     return X_transformed
 
@@ -300,7 +317,7 @@ class FTTransformerTrainer:
         
         # FT-Transformer 모델 초기화
         self.model = FTTransformerQKD(
-            num_features=8,
+            num_features=NUM_INPUT_FEATURES,
             d_embed=config['d_embed'],
             n_heads=config['n_heads'],
             n_layers=config['n_layers'],
@@ -311,7 +328,7 @@ class FTTransformerTrainer:
         self.model.to(self.device)
         
         print(f"모델 구조:")
-        print(f"  - 입력 변수: 8개")
+        print(f"  - 입력 변수: {NUM_INPUT_FEATURES}개 (Y_0 {'포함' if INCLUDE_Y_0 else '제외'})")
         print(f"  - CLS TOKEN: 사용 (전체 정보 집약)")
         print(f"  - 임베딩 차원: {config['d_embed']}")
         print(f"  - Attention heads: {config['n_heads']}")
@@ -367,18 +384,13 @@ class FTTransformerTrainer:
         print(f"데이터 로드 중: {csv_path}")
         df = pd.read_csv(csv_path)
         
-        # 입력 파라미터 (8개)
-        input_columns = ['eta_d', 'Y_0', 'e_d', 'alpha', 'zeta', 'eps_sec', 'eps_cor', 'N']
-        
-        # 출력 파라미터 (9개)
-        output_columns = ['mu', 'nu', 'vac', 'p_mu', 'p_nu', 'p_vac', 'p_X', 'q_X', 'skr']
-        
-        # 데이터 추출
-        X = df[input_columns].values
-        y = df[output_columns].values
+        # 상단에 정의된 INPUT_COLUMNS, OUTPUT_COLUMNS 사용
+        X = df[INPUT_COLUMNS].values
+        y = df[OUTPUT_COLUMNS].values
         
         print(f"데이터 크기: {X.shape[0]} 샘플")
         print(f"입력 차원: {X.shape[1]}, 출력 차원: {y.shape[1]}")
+        print(f"Y_0 포함 여부: {INCLUDE_Y_0}")
         
         return X, y
     

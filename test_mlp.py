@@ -38,9 +38,20 @@ L = 100                    # 거리 (km)
 EPOCHS = 200               # 학습 시 사용한 에포크 수
 BATCH_SIZE = 128           # 학습 시 사용한 배치 크기
 
+# 데이터 설정 (train_mlp.py와 동일하게 설정)
+INCLUDE_Y_0 = False        # Y_0를 입력 변수로 포함할지 여부
+
 # 자동 설정되는 경로
 MODEL_PATH = f"qkd_mlp_L{L}_E{EPOCHS}_B{BATCH_SIZE}.pth"  # 모델 경로
 TEST_CSV = f"dataset/test_L{L}.csv"                        # 테스트 데이터 경로
+
+# 입력 컬럼 정의
+if INCLUDE_Y_0:
+    INPUT_COLUMNS = ['eta_d', 'Y_0', 'e_d', 'alpha', 'zeta', 'eps_sec', 'eps_cor', 'N']
+else:
+    INPUT_COLUMNS = ['eta_d', 'e_d', 'alpha', 'zeta', 'eps_sec', 'eps_cor', 'N']
+
+OUTPUT_COLUMNS = ['mu', 'nu', 'vac', 'p_mu', 'p_nu', 'p_vac', 'p_X', 'q_X', 'skr']
 
 # 테스트 설정
 TEST_BATCH_SIZE = 256      # 테스트 배치 크기
@@ -176,16 +187,14 @@ def main():
     
     set_seed(seed)
 
-    # 입력/출력 컬럼 정의 (Y_0, e_0, L은 고정값이므로 CSV에 없음)
-    input_columns = ["eta_d", "e_d", "alpha", "zeta", "eps_sec", "eps_cor", "N"]
-    output_columns = ["mu", "nu", "vac", "p_mu", "p_nu", "p_vac", "p_X", "q_X", "skr"]
+    print(f"Y_0 포함 여부: {INCLUDE_Y_0}")
 
     df = pd.read_csv(test_csv)
     print(f"테스트 데이터셋 로드 완료: {test_csv}")
     print(f"총 샘플 수: {len(df)}")
 
-    X_test = df[input_columns].to_numpy()
-    y_test = df[output_columns].to_numpy()
+    X_test = df[INPUT_COLUMNS].to_numpy()
+    y_test = df[OUTPUT_COLUMNS].to_numpy()
 
     trainer = QKDMLPTrainer()
     trainer.load_model(model_path)
@@ -209,7 +218,7 @@ def main():
     predictions = metrics["predictions"]
     actuals = metrics["targets"]
 
-    skr_idx = output_columns.index("skr")
+    skr_idx = OUTPUT_COLUMNS.index("skr")
     skr_percent_errors = compute_skr_percent_errors(actuals[:, skr_idx], predictions[:, skr_idx])
     skr_summary = summarize_percent_errors(skr_percent_errors)
 
@@ -221,7 +230,7 @@ def main():
     print(f"  평균: {skr_summary['mean']:.2f}% | 표준편차: {skr_summary['std']:.2f}%")
 
     if SHOW_DETAILED:
-        print_detailed_analysis(df, predictions, actuals, output_columns)
+        print_detailed_analysis(df, predictions, actuals, OUTPUT_COLUMNS)
 
     print("\n" + "=" * 90)
     print("테스트 완료!")

@@ -42,10 +42,22 @@ L = 100                            # 거리 (km)
 EPOCHS = 200                       # 훈련 에포크 수
 BATCH_SIZE = 128                   # 배치 크기
 
+# 데이터 설정
+INCLUDE_Y_0 = False                # Y_0를 입력 변수로 포함할지 여부
+
 # 데이터 경로 설정
 TRAIN_CSV = f"dataset/train_L{L}.csv"                                 # 훈련 데이터 경로
 TEST_CSV = f"dataset/test_L{L}.csv"                                   # 테스트 데이터 경로
 OUTPUT_MODEL = f"qkd_mlp_L{L}_E{EPOCHS}_B{BATCH_SIZE}.pth"           # 출력 모델 경로
+
+# 입력 컬럼 정의
+if INCLUDE_Y_0:
+    INPUT_COLUMNS = ['eta_d', 'Y_0', 'e_d', 'alpha', 'zeta', 'eps_sec', 'eps_cor', 'N']
+else:
+    INPUT_COLUMNS = ['eta_d', 'e_d', 'alpha', 'zeta', 'eps_sec', 'eps_cor', 'N']
+
+OUTPUT_COLUMNS = ['mu', 'nu', 'vac', 'p_mu', 'p_nu', 'p_vac', 'p_X', 'q_X', 'skr']
+NUM_INPUT_FEATURES = len(INPUT_COLUMNS)
 
 # 재현성 설정
 RANDOM_SEED = 42                   # 랜덤 시드
@@ -97,22 +109,31 @@ def set_seed(seed=42):
 
 def transform_input_features(X):
     """
-    모델 입력 특성 변환: eps_sec, eps_cor, N은 로그 변환
-    INPUT_COLUMNS = ['eta_d', 'e_d', 'alpha', 'zeta', 'eps_sec', 'eps_cor', 'N']
+    모델 입력 특성 변환: Y_0 (옵션), eps_sec, eps_cor, N은 로그 변환
     """
     X_transformed = np.array(X, dtype=np.float64, copy=True)
 
     if X_transformed.ndim == 1:
         X_transformed = X_transformed.reshape(1, -1)
 
-    # eps_sec (인덱스 4): log10 변환
-    X_transformed[:, 4] = np.log10(np.clip(X_transformed[:, 4], a_min=1e-30, a_max=None))
-    
-    # eps_cor (인덱스 5): log10 변환
-    X_transformed[:, 5] = np.log10(np.clip(X_transformed[:, 5], a_min=1e-30, a_max=None))
-    
-    # N (인덱스 6): log10 변환
-    X_transformed[:, 6] = np.log10(np.clip(X_transformed[:, 6], a_min=1.0, a_max=None))
+    if INCLUDE_Y_0:
+        # Y_0 포함: ['eta_d', 'Y_0', 'e_d', 'alpha', 'zeta', 'eps_sec', 'eps_cor', 'N']
+        # Y_0 (인덱스 1): log10 변환
+        X_transformed[:, 1] = np.log10(np.clip(X_transformed[:, 1], a_min=1e-20, a_max=None))
+        # eps_sec (인덱스 5): log10 변환
+        X_transformed[:, 5] = np.log10(np.clip(X_transformed[:, 5], a_min=1e-30, a_max=None))
+        # eps_cor (인덱스 6): log10 변환
+        X_transformed[:, 6] = np.log10(np.clip(X_transformed[:, 6], a_min=1e-30, a_max=None))
+        # N (인덱스 7): log10 변환
+        X_transformed[:, 7] = np.log10(np.clip(X_transformed[:, 7], a_min=1.0, a_max=None))
+    else:
+        # Y_0 제외: ['eta_d', 'e_d', 'alpha', 'zeta', 'eps_sec', 'eps_cor', 'N']
+        # eps_sec (인덱스 4): log10 변환
+        X_transformed[:, 4] = np.log10(np.clip(X_transformed[:, 4], a_min=1e-30, a_max=None))
+        # eps_cor (인덱스 5): log10 변환
+        X_transformed[:, 5] = np.log10(np.clip(X_transformed[:, 5], a_min=1e-30, a_max=None))
+        # N (인덱스 6): log10 변환
+        X_transformed[:, 6] = np.log10(np.clip(X_transformed[:, 6], a_min=1.0, a_max=None))
 
     return X_transformed
 
@@ -153,7 +174,9 @@ class QKDDataset(Dataset):
 
 class QKDMLP(nn.Module):
     """MLP 신경망 (512-256 은닉층)"""
-    def __init__(self, input_size=7, hidden_sizes=[512, 256], output_size=9, dropout_rate=None):
+    def __init__(self, input_size=None, hidden_sizes=[512, 256], output_size=9, dropout_rate=None):
+        if input_size is None:
+            input_size = NUM_INPUT_FEATURES
         super(QKDMLP, self).__init__()
         
         if dropout_rate is None:
@@ -194,10 +217,11 @@ class QKDMLPTrainer:
         self.device = torch.device('cpu')
         print(f"사용 중인 디바이스: {self.device}")
         
-        # 모델 초기화 (Y_0, e_0, L은 고정값이므로 입력 7개)
-        self.model = QKDMLP(input_size=7, hidden_sizes=[512, 256], output_size=9, 
+        # 모델 초기화
+        self.model = QKDMLP(input_size=NUM_INPUT_FEATURES, hidden_sizes=[512, 256], output_size=9, 
                            dropout_rate=config['dropout_rate'])
         self.model.to(self.device)
+        print(f"입력 변수: {NUM_INPUT_FEATURES}개 (Y_0 {'포함' if INCLUDE_Y_0 else '제외'})")
         
         # 옵티마이저 설정
         optimizer_name = config.get('optimizer', 'Adam')
@@ -246,15 +270,13 @@ class QKDMLPTrainer:
         print(f"데이터 로드 중: {csv_path}")
         df = pd.read_csv(csv_path)
         
-        # 입력 파라미터 (Y_0, e_0, L은 고정값이므로 제외)
-        input_columns = ['eta_d', 'e_d', 'alpha', 'zeta', 'eps_sec', 'eps_cor', 'N']
-        output_columns = ['mu', 'nu', 'vac', 'p_mu', 'p_nu', 'p_vac', 'p_X', 'q_X', 'skr']
-        
-        X = df[input_columns].values
-        y = df[output_columns].values
+        # 상단에 정의된 INPUT_COLUMNS, OUTPUT_COLUMNS 사용
+        X = df[INPUT_COLUMNS].values
+        y = df[OUTPUT_COLUMNS].values
         
         print(f"데이터 크기: {X.shape[0]} 샘플")
         print(f"입력 차원: {X.shape[1]}, 출력 차원: {y.shape[1]}")
+        print(f"Y_0 포함 여부: {INCLUDE_Y_0}")
         
         return X, y
     
@@ -494,10 +516,11 @@ class QKDMLPTrainer:
             'train_losses': self.train_losses,
             'val_losses': self.val_losses,
             'model_config': {
-                'input_size': 7,
+                'input_size': NUM_INPUT_FEATURES,
                 'hidden_sizes': [512, 256],
                 'output_size': 9,
-                'dropout_rate': 0.1
+                'dropout_rate': 0.1,
+                'include_Y_0': INCLUDE_Y_0
             }
         }, path)
         print(f"모델이 {path}에 저장되었습니다.")
@@ -525,10 +548,9 @@ def main():
     
     set_seed(RANDOM_SEED)
     
-    trainer = QKDMLPTrainer(config=config)
+    print(f"Y_0 포함 여부: {INCLUDE_Y_0}")
     
-    input_columns = ['eta_d', 'e_d', 'alpha', 'zeta', 'eps_sec', 'eps_cor', 'N']
-    output_columns = ['mu', 'nu', 'vac', 'p_mu', 'p_nu', 'p_vac', 'p_X', 'q_X', 'skr']
+    trainer = QKDMLPTrainer(config=config)
     
     train_df = pd.read_csv(TRAIN_CSV)
     test_df = pd.read_csv(TEST_CSV)
@@ -536,8 +558,8 @@ def main():
     print(f"훈련 데이터 로드: {TRAIN_CSV} ({len(train_df)} 샘플)")
     print(f"테스트 데이터 로드: {TEST_CSV} ({len(test_df)} 샘플)")
     
-    X_train = train_df[input_columns].to_numpy()
-    y_train = train_df[output_columns].to_numpy()
+    X_train = train_df[INPUT_COLUMNS].to_numpy()
+    y_train = train_df[OUTPUT_COLUMNS].to_numpy()
     
     # 데이터 전처리
     X_train_scaled, y_train_scaled = trainer.preprocess_data(X_train, y_train)
@@ -555,8 +577,8 @@ def main():
     
     # 테스트 데이터 평가
     print("\n테스트 데이터 평가 중...")
-    X_test = test_df[input_columns].to_numpy()
-    y_test = test_df[output_columns].to_numpy()
+    X_test = test_df[INPUT_COLUMNS].to_numpy()
+    y_test = test_df[OUTPUT_COLUMNS].to_numpy()
     
     X_test_transformed = transform_input_features(X_test)
     X_test_scaled = trainer.feature_scaler.transform(X_test_transformed)
