@@ -1,32 +1,91 @@
+"""
+QKD 파라미터 최적화 - GA 하이퍼파라미터 튜닝
+
+Optuna를 사용하여 GA(유전 알고리즘) 하이퍼파라미터를 최적화하고,
+최적화된 설정으로 QKD 파라미터를 탐색하는 스크립트입니다.
+
+주요 기능:
+    - Optuna를 이용한 GA 하이퍼파라미터 최적화
+    - 최적화된 GA로 QKD 파라미터 탐색
+    - vac 파라미터 최적화 모드 지원
+
+사용법:
+    1. 파일 상단의 설정 변수 수정 (L, 환경 변수 등)
+    2. python ga_final.py 실행
+"""
+
 import numpy as np
 import os
 import pygad
 import time
 from tqdm import tqdm
 import optuna
-import yaml
 
 import warnings
 warnings.filterwarnings('ignore')
 
 # SKR 시뮬레이터 import
-from simulator import skr_simulator, QKDSimulatorConfig
+from simulator import skr_simulator
 
-# 광섬유 길이 L 사용자 입력
-# 10 30 40 50 60 70 80 90 100 110 완료 120에서 -1만 반환되는 이유를 찾아봐야할듯(랜덤 초기화 해보자자).
-L = 20
+# ============================================================
+# 최적화 설정
+# ============================================================
 
-# vac 최적화 모드 설정 (True: vac도 최적화, False: vac=0 고정)
-OPTIMIZE_VAC = False
+# 거리 설정
+L = 20                              # 광섬유 길이 (km)
 
-# 설정 객체 생성
-simulator_config = QKDSimulatorConfig.from_yaml('config/config.yaml')
-simulator_config.L = L
+# vac 최적화 모드 설정
+OPTIMIZE_VAC = False                # True: vac도 최적화, False: vac=0 고정
+
+# Optuna 최적화 설정
+N_TRIALS = 1000                     # Optuna 최적화 시도 횟수
+NUM_ITER = 1                        # 각 시도당 GA 반복 횟수
+
+# 초기 하이퍼파라미터 (Optuna 시작점)
+INITIAL_PARAMS = {
+    'crossover_type': 'two_points',
+    'mutation_type': 'adaptive',
+    'parent_selection_type': 'tournament',
+    'sol_per_pop': 239,
+    'num_parents_mating': 125,
+    'keep_parents': 107,
+    'keep_elitism': 12,
+    'crossover_probability': 0.7248539327369946,
+    'mutation_percent_genes': [0.3, 0.1],
+    'K_tournament': 71
+}
+
+# ============================================================
+# 환경 변수 설정 (ga_final.py 단독 실행 시에만 사용)
+# ============================================================
+# 주의: data_generator.py에서 import하여 사용할 때는
+#       data_generator.py의 설정이 우선됩니다.
+#       아래 환경 변수는 ga_final.py를 직접 실행할 때만 사용됩니다.
+
+# 검출 파라미터
+ETA_D = 0.045                       # 단일 광자 검출기의 검출 효율 (%)
+Y_0 = 1.7e-6                        # 암계수율 (dark count rate)
+E_D = 0.033                         # 정렬 오류율 (misalignment rate)
+
+# 광섬유 파라미터
+ALPHA = 0.21                        # 단일 모드 광섬유의 감쇠 계수
+
+# 오류 정정 파라미터
+ZETA = 1.22                         # 오류 정정 효율
+E_0 = 0.5                           # 배경 오류율
+
+# 보안 파라미터
+EPS_SEC = 1.0e-10                   # 보안 매개변수
+EPS_COR = 1.0e-15                   # 정확성 매개변수
+
+# 시스템 파라미터
+N = 1.0e10                          # Alice가 보낸 광 펄스 개수
+LAMBDA = None                       # Xk에서 관찰된 비트 값 1의 확률
+
+# ============================================================
 
 # CPU 코어 수 자동 감지
 CPU_COUNT = os.cpu_count()
-# print(f"사용 가능한 CPU 코어 수: {CPU_COUNT}")
-# print(f"vac 최적화 모드: {'ON (vac 포함)' if OPTIMIZE_VAC else 'OFF (vac=0 고정)'}")
 
 # 재현 가능한 결과를 위한 시드 설정
 import random
@@ -36,92 +95,80 @@ np.random.seed(42)
 def define_ga(co_type, mu_type, sel_type, 
               gen = 200,
               num_parents_mating = 60, sol_per_pop = 200, keep_parents = 50, keep_elitism = 10, K_tournament = 8, crossover_probability = 0.8, mutation_probability = 0.02, mutation_percent_genes = "default",
-              random_seed = 42, fitness_func=None, config=None):
-
-    """유전 알고리즘 인스턴스를 정의하는 함수 - vac 최적화 모드 지원"""
+              random_seed = 42, fitness_func=None, optimize_vac=None):
     
-    # config가 제공되지 않으면 전역 config 사용
-    if config is None:
-        config = simulator_config
+    # optimize_vac이 지정되지 않으면 전역 변수 사용
+    if optimize_vac is None:
+        optimize_vac = OPTIMIZE_VAC
     
-    # 유전자 개수 설정 (OPTIMIZE_VAC에 따라)
-    num_genes = 8 if OPTIMIZE_VAC else 7
+    # 유전자 개수 설정
+    num_genes = 8 if optimize_vac else 7
     
-    # PyGAD용 래퍼 함수 (fitness_func이 제공되지 않은 경우)
+    # fitness_func이 제공되지 않은 경우 기본 래퍼 함수 생성
     if fitness_func is None:
-        if OPTIMIZE_VAC:
-            # vac도 최적화: 8개 유전자 그대로 사용
+        if optimize_vac:
             def skr_fitness_wrapper(ga_instance, solution, solution_idx):
-                return skr_simulator(ga_instance, solution, solution_idx, config)
+                return skr_simulator(
+                    ga_instance, solution, solution_idx,
+                    L=L, eta_d=ETA_D, Y_0=Y_0, e_d=E_D,
+                    alpha=ALPHA, zeta=ZETA, e_0=E_0,
+                    eps_sec=EPS_SEC, eps_cor=EPS_COR, N=N, Lambda=LAMBDA
+                )
         else:
-            # vac=0 고정: 7개 유전자를 8개로 확장
             def skr_fitness_wrapper(ga_instance, solution, solution_idx):
-                # solution은 7개: mu, nu, p_mu, p_nu, p_vac, p_X, q_X
-                # vac=0을 인덱스 2에 삽입하여 8개로 만듦
                 full_solution = np.insert(solution, 2, 0.0)
-                return skr_simulator(ga_instance, full_solution, solution_idx, config)
+                return skr_simulator(
+                    ga_instance, full_solution, solution_idx,
+                    L=L, eta_d=ETA_D, Y_0=Y_0, e_d=E_D,
+                    alpha=ALPHA, zeta=ZETA, e_0=E_0,
+                    eps_sec=EPS_SEC, eps_cor=EPS_COR, N=N, Lambda=LAMBDA
+                )
         fitness_func = skr_fitness_wrapper
     
-    ga_instance = pygad.GA(num_generations = gen,   #(논문 : 최대 1000)                    # 세대 수
-                    num_parents_mating = num_parents_mating,   #(논문 : 30)               # 부모로 선택될 솔루션의 수
-
+    ga_instance = pygad.GA(
+                    num_generations = gen,
+                    num_parents_mating = num_parents_mating,
                     fitness_func = fitness_func,
-                    fitness_batch_size = None,                                           # 배치 단위로 적합도 함수를 계산, 적합도 함수는 각 배치에 대해 한 번씩 호출
-
-                    initial_population = None,                                           # 사용자 정의 초기 개체군, num_genes와 크기가 같아야 함
-                    sol_per_pop = sol_per_pop,                                           # 한 세대에 포함되는 솔루션(염색체)의 수, 크면 탐색 다양성이 높아짐, 작으면 빠르게 수렴하지만 최적해를 놓칠 수 있음, initial population이 있으면 작동하지 않음
-                    num_genes = num_genes,                                               # 염색체 내 유전자 수 (OPTIMIZE_VAC에 따라 7 또는 8), initial_population을 사용하는 경우 이 매개변수가 필요하지 않음
-                    gene_type = [float, 6],                                              # 유전자 유형, 각 개별 유전자의 데이터 유형 및 소수점도 지정 가능, 리스트 형식 e.g. [int, float, bool, int]
-
-                    init_range_low = 0,                                                  # 초기 모집단의 유전자 값이 선택되는 임의 범위의 하한, initial_population이 있으면 필요 없음
-                    init_range_high = 1,                                                 # 초기 모집단의 유전자 값이 선택되는 임의 범위의 상한,
-
-                    parent_selection_type = sel_type,                                    # 부모 선택 유형, sss (for steady-state selection), rws (for roulette wheel selection), sus (for stochastic universal selection), rank (for rank selection), random (for random selection), and tournament (for tournament selection)
-                    keep_parents = keep_parents,                                         # 현재 개체군에 유지할 부모의 수, -1 : 모든 부모를 개체군에 유지, keep_elitism이 0인 경우에만 작동
-                    keep_elitism = keep_elitism,                                         # k : 현재 세대의 k개의 best solution만 다음 세대로 이어짐, 0 <= keep_elitism <= sol_per_pop
-
-                    K_tournament = K_tournament,                                         # parent_selection_type이 tournament인 경우에 토너먼트에 참여하는 부모의 수
-
-                    crossover_type = co_type,                                            # 교차 연산 유형, single_point (for single-point crossover), two_points (for two points crossover), uniform (for uniform crossover), and scattered (for scattered crossover)
-                    crossover_probability = crossover_probability,   #(논문 : 0.8)        # 교차 연산을 적용할 부모 노드를 선택할 확률, 나머지 확률은 부모 유전자를 그대로 복제해서 다음 세대로 넘김
-
-                    mutation_type = mu_type,                                             # 돌연변이 연산의 유형, random (for random mutation), swap (for swap mutation), inversion (for inversion mutation), scramble (for scramble mutation), and adaptive (for adaptive mutation)
-                    mutation_probability = mutation_probability,   #(논문 : 0.02)         # 돌연변이 연산을 적용할 유전자(개체) 선택 확률, 돌연변이 함수 정의 가능, 이 변수가 있으면 mutation_percent_genes와 mutation_num_genes 필요 없음
-                    mutation_by_replacement = True,                                      # mutation_type이 random일 때만 작동, True면 기존 유전자를 돌연변이로 대체, False면 기존 유전자에 노이즈 추가
-                    mutation_percent_genes = mutation_percent_genes,                     # 돌연변이 대상 개체 내에서 변이할 유전자의 비율 (default : 10%), 여기서 돌연변이할 유전자의 개수가 계산되어 mutation_num_genes에 할당됨
-                    mutation_num_genes = None,                                           # 돌연변이할 유전자의 개수 지정, mutation_probability 변수가 있는 경우 작동하지 않음
-                    random_mutation_min_val = -0.5,                                      # 유전자에 추가될 난수 값이 선택되는 범위의 하한
-                    random_mutation_max_val = 0.5,                                       # 유전자에 추가될 난수 값이 선택되는 범위의 상한
-
-                    gene_space = [{'low': 0, 'high': 1}] * num_genes,                    # 유전자 공간 (OPTIMIZE_VAC에 따라 7 또는 8개)
-
-                    on_start = None,                                                     # 유전 알고리즘이 진화를 시작하기 전에 한 번만 호출되는 함수/메서드
-                    on_fitness = None,                                                   # 모집단 내 모든 해의 적합도 값을 계산한 후 호출할 함수/메서드
-                    on_parents = None,                                                   # 부모를 선택한 후 호출할 함수/메서드
-                    on_crossover = None,                                                 # 교차 연산이 적용될 때마다 호출될 함수
-                    on_mutation = None,                                                  # 돌연변이 연산이 적용될 때마다 호출될 함수
-                    on_generation = None,                                                # 각 세대마다 호출될 함수
-                    on_stop = None,                                                      # 유전 알고리즘이 종료되기 바로 전이나 모든 세대가 완료될 때 한번만 호출되는 함수
-
-                    save_best_solutions = True,                                          # True인 경우 각 세대 이후 best_solution에 최적해 저장
-                    save_solutions = True,                                               # 각 세대의 모든 해는 solution에 저장
-
+                    fitness_batch_size = None,
+                    initial_population = None,
+                    sol_per_pop = sol_per_pop,
+                    num_genes = num_genes,
+                    gene_type = [float, 6],
+                    init_range_low = 0,
+                    init_range_high = 1,
+                    parent_selection_type = sel_type,
+                    keep_parents = keep_parents,
+                    keep_elitism = keep_elitism,
+                    K_tournament = K_tournament,
+                    crossover_type = co_type,
+                    crossover_probability = crossover_probability,
+                    mutation_type = mu_type,
+                    mutation_probability = mutation_probability,
+                    mutation_by_replacement = True,
+                    mutation_percent_genes = mutation_percent_genes,
+                    mutation_num_genes = None,
+                    random_mutation_min_val = -0.5,
+                    random_mutation_max_val = 0.5,
+                    gene_space = [{'low': 0, 'high': 1}] * num_genes,
+                    on_start = None,
+                    on_fitness = None,
+                    on_parents = None,
+                    on_crossover = None,
+                    on_mutation = None,
+                    on_generation = None,
+                    on_stop = None,
+                    save_best_solutions = True,
+                    save_solutions = True,
                     suppress_warnings = False,
-                    allow_duplicate_genes = False,                                       # True인 경우, solution/염색체에 중복된 유전자 값이 있을 수 있음
-
+                    allow_duplicate_genes = False,
                     stop_criteria = None,
-                    parallel_processing = None,                                          # None인 경우 병렬 처리 허용하지 않음
-
+                    parallel_processing = None,
                     random_seed = random_seed,
-
-                    logger = None                                                        # logger 허용
+                    logger = None
                     )
     return ga_instance
 
-num_iter = 1
-
 def objective(trial):
-    """Optuna 최적화 목적 함수"""
     total_fitness = 0
     
     crossover_type = trial.suggest_categorical("crossover_type", ["single_point", "two_points", "uniform", "scattered"])
@@ -134,7 +181,6 @@ def objective(trial):
     keep_elitism = trial.suggest_int("keep_elitism", 0, 20)    
     crossover_probability = trial.suggest_float("crossover_probability", 0.2, 1)
 
-    # mutation 
     if mutation_type == "adaptive":
         mutation_percent_genes = trial.suggest_categorical("mutation_percent_genes", [[0.5, 0.05], [0.3, 0.1], [0.7, 0.2]])
         mutation_probability = None
@@ -142,11 +188,8 @@ def objective(trial):
         mutation_percent_genes = "default"
         mutation_probability = trial.suggest_float("mutation_probability", 0.01, 0.5)
 
-    # tournament
     K_tournament = trial.suggest_int("K_tournament", 2, int(num_parents_mating * 0.7)) if parent_selection_type == "tournament" else None
-
-    # 고정된 L에 대하여 최적화
-    for _ in range(num_iter):
+    for _ in range(NUM_ITER):
         ga = define_ga(co_type=crossover_type,
                        mu_type=mutation_type,
                        sel_type=parent_selection_type,
@@ -160,8 +203,7 @@ def objective(trial):
                        mutation_probability=mutation_probability,
                        mutation_percent_genes=mutation_percent_genes,
                        random_seed=42,
-                       fitness_func=None,  # 기본 래퍼 함수 사용
-                       config=simulator_config)  # config 전달
+                       fitness_func=None)
 
         ga.run()
         best_fitness = ga.best_solution()[1]
@@ -170,32 +212,16 @@ def objective(trial):
     return - total_fitness 
 
 def run_optimization():
-    """Optuna 최적화를 실행하는 함수 - 랜덤 초기값으로 시작"""
     sampler = optuna.samplers.TPESampler(n_startup_trials=20,  
                                          multivariate=False,    
                                          group=False)
 
     study = optuna.create_study(sampler = sampler, direction="minimize")
     
-    # 최적화된 하이퍼파라미터를 초기값으로 사용
-    initial_params = {
-        'crossover_type': 'two_points',
-        'mutation_type': 'adaptive',
-        'parent_selection_type': 'tournament',
-        'sol_per_pop': 239,
-        'num_parents_mating': 125,
-        'keep_parents': 107,
-        'keep_elitism': 12,
-        'crossover_probability': 0.7248539327369946,
-        'mutation_percent_genes': [0.3, 0.1],
-        'K_tournament': 71
-    }
+    study.enqueue_trial(INITIAL_PARAMS)
+    print("초기 하이퍼파라미터를 시작점으로 추가했습니다.")
     
-    # # 초기 시도를 study에 추가
-    study.enqueue_trial(initial_params)
-    print("최적화된 하이퍼파라미터를 초기 시도로 추가했습니다.")
-    
-    study.optimize(objective, n_trials=1000, n_jobs=1)
+    study.optimize(objective, n_trials=N_TRIALS, n_jobs=1)
 
     print("Best trial:")
     print(study.best_trial)
@@ -203,12 +229,8 @@ def run_optimization():
     return study
 
 def run_final_ga(study):
-    """최적화된 하이퍼파라미터로 최종 GA를 실행하는 함수"""
-    num_iter = 1
-
     print(f"L={L}에서 최적화된 하이퍼파라미터로 GA를 실행합니다...")
     
-    # mutation 관련 파라미터 설정
     mutation_type = study.best_trial.params['mutation_type']
     if mutation_type == "adaptive":
         mutation_percent_genes = study.best_trial.params['mutation_percent_genes']
@@ -217,14 +239,13 @@ def run_final_ga(study):
         mutation_percent_genes = "default"
         mutation_probability = study.best_trial.params['mutation_probability']
     
-    # K_tournament 파라미터 설정
     parent_selection_type = study.best_trial.params['parent_selection_type']
     if parent_selection_type == "tournament":
         K_tournament = study.best_trial.params['K_tournament']
     else:
         K_tournament = None
     
-    for i in tqdm(range(num_iter)) : 
+    for i in tqdm(range(NUM_ITER)) : 
         ga_instance = define_ga(co_type = study.best_trial.params['crossover_type'], 
                                 mu_type = mutation_type, 
                                 sel_type = parent_selection_type, 
@@ -238,15 +259,13 @@ def run_final_ga(study):
                                 mutation_percent_genes = mutation_percent_genes, 
                                 K_tournament = K_tournament,
                                 random_seed = 42,
-                                fitness_func = None,  # 기본 래퍼 함수 사용
-                                config = simulator_config)  # config 전달
+                                fitness_func = None)
         ga_instance.run()
         solution, solution_fitness, solution_idx = ga_instance.best_solution()
 
     return solution_fitness, solution, solution_fitness, solution_idx
 
 def main():
-    """메인 실행 함수 - L=100 특화, 랜덤 초기값으로 시작"""
     start_time = time.time()
     
     print("=" * 60)
@@ -282,4 +301,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

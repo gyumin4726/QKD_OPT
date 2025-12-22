@@ -1,61 +1,107 @@
-import numpy as np
-from simulator import skr_simulator, QKDSimulatorConfig
+"""
+SKR(Secure Key Rate) 계산 유틸리티
 
-def calculate_skr(mu, nu, vac, p_mu, p_nu, p_vac, p_x, q_x, 
-                  L=100, config_path='config/config.yaml'):
-    """
-    8개의 파라미터로 SKR(Secure Key Rate) 계산 (config 파일에서 배경 파라미터 로드)
-    
-    Args:
-        mu: 강도 파라미터 mu
-        nu: 강도 파라미터 nu
-        vac: 진공 상태 (보통 0으로 고정)
-        p_mu: mu에 대한 확률
-        p_nu: nu에 대한 확률
-        p_vac: 진공에 대한 확률
-        p_x: X 기저 선택 확률
-        q_x: 수신자의 X 기저 선택 확률
-        L: 거리 (km), 기본값 110
-        config_path: 설정 파일 경로, 기본값 'config/config.yaml'
-    
-    Returns:
-        float: 계산된 SKR 값
-    """
+8개의 QKD 파라미터(mu, nu, vac, p_mu, p_nu, p_vac, p_x, q_x)와 
+거리(L)를 입력받아 SKR 값을 계산하는 독립 실행형 스크립트입니다.
+
+- 환경 변수: 파일 상단에서 검출, 광섬유, 오류 정정, 보안, 시스템 파라미터 설정
+- 최적화 파라미터: 8개의 QKD 파라미터와 거리 범위 설정
+- 메인 실행: 설정된 파라미터로 거리별 SKR 계산 및 결과 출력
+
+사용법:
+    1. 파일 상단의 환경 변수 및 파라미터 수정
+    2. python calculate_skr.py 실행
+"""
+
+import numpy as np
+from simulator import skr_simulator
+
+# ============================================================
+# 환경 변수 설정
+# ============================================================
+
+# 검출 파라미터
+ETA_D = 0.045           # 단일 광자 검출기의 검출 효율 (%)
+Y_0 = 1.7e-6            # 암계수율 (dark count rate)
+E_D = 0.033             # 정렬 오류율 (misalignment rate)
+
+# 광섬유 파라미터
+ALPHA = 0.21            # 단일 모드 광섬유의 감쇠 계수
+
+# 오류 정정 파라미터
+ZETA = 1.22             # 오류 정정 효율
+E_0 = 0.5               # 배경 오류율
+
+# 보안 파라미터
+EPS_SEC = 1.0e-10       # 보안 매개변수
+EPS_COR = 1.0e-15       # 정확성 매개변수
+
+# 시스템 파라미터
+N = 1.0e10              # Alice가 보낸 광 펄스 개수
+LAMBDA = None           # Xk에서 관찰된 비트 값 1의 확률
+
+# ============================================================
+# 최적화 파라미터 설정
+# ============================================================
+
+# QKD 최적화 파라미터 (8개)
+MU = 0.521068           # 강도 파라미터 mu
+NU = 0.236871           # 강도 파라미터 nu
+VAC = 0.034389          # 진공 상태
+P_MU = 0.852630         # mu에 대한 확률
+P_NU = 0.162988         # nu에 대한 확률
+P_VAC = 0.090949        # 진공에 대한 확률
+P_X = 0.163874          # X 기저 선택 확률
+Q_X = 0.209120          # 수신자의 X 기저 선택 확률
+
+# 거리 범위 설정
+L_START = 0             # 시작 거리 (km)
+L_END = 131             # 종료 거리 (km, 미포함)
+L_STEP = 10             # 거리 간격 (km)
+
+# ============================================================
+
+def calculate_skr(mu, nu, vac, p_mu, p_nu, p_vac, p_x, q_x, L=100):
     # 8개의 파라미터를 배열로 구성
     parameters = np.array([mu, nu, vac, p_mu, p_nu, p_vac, p_x, q_x])
     
-    # config 파일에서 시스템 설정 로드 (ga_crosscheck.py와 동일한 방식)
-    simulator_config = QKDSimulatorConfig.from_yaml(config_path)
-    simulator_config.L = L  # L 값만 별도로 설정
-    
-    # SKR 계산
-    skr = skr_simulator(None, parameters, None, simulator_config)
+    # SKR 계산 (환경 변수를 kwargs로 직접 전달)
+    skr = skr_simulator(
+        None, parameters, None,
+        eta_d=ETA_D, Y_0=Y_0, e_d=E_D,
+        alpha=ALPHA, zeta=ZETA, e_0=E_0,
+        eps_sec=EPS_SEC, eps_cor=EPS_COR,
+        N=N, Lambda=LAMBDA, L=L
+    )
     
     return skr
 
 
 if __name__ == "__main__":
-    # 새로운 파라미터 값으로 L=0~120까지 SKR 계산
+    # 파일 상단의 파라미터로 SKR 계산
     print("=" * 60)
-    print("새로운 파라미터로 L=0~120까지 SKR 계산")
+    print("파라미터로 SKR 계산")
     print("=" * 60)
     
-    # 파라미터 설정 (사용자 제공 값)
-    mu = 0.521068
-    nu = 0.236871
-    vac = 0.034389
-    p_mu = 0.252630
-    p_nu = 0.862988
-    p_vac = 0.090949
-    p_x = 0.163874
-    q_x = 0.209120
+    # 상단에서 정의한 파라미터 사용
+    mu = MU
+    nu = NU
+    vac = VAC
+    p_mu = P_MU
+    p_nu = P_NU
+    p_vac = P_VAC
+    p_x = P_X
+    q_x = Q_X
     
-    # L 값 범위 설정 (0부터 120까지 10단위)
-    L_values = np.arange(0, 131, 10)
+    # 상단에서 정의한 거리 범위 사용
+    L_values = np.arange(L_START, L_END, L_STEP)
     
-    print(f"\n배경 파라미터: config/config.yaml에서 로드")
-    print(f"거리 L: 0~120 km (10 km 간격, 총 {len(L_values)}개)")
-    print(f"\n파라미터:")
+    print(f"\n환경 변수 (Detection, Fiber, Error Correction, Security, System):")
+    print(f"  eta_d={ETA_D}, Y_0={Y_0}, e_d={E_D}")
+    print(f"  alpha={ALPHA}, zeta={ZETA}, e_0={E_0}")
+    print(f"  eps_sec={EPS_SEC}, eps_cor={EPS_COR}, N={N}")
+    print(f"\n거리 범위: L={L_START}~{L_END-1} km ({L_STEP} km 간격, 총 {len(L_values)}개)")
+    print(f"\n최적화 파라미터 (QKD):")
     print(f"  mu: {mu}")
     print(f"  nu: {nu}")
     print(f"  vac: {vac}")
@@ -114,19 +160,5 @@ if __name__ == "__main__":
             print(f"\n최대 SKR: {max_skr['skr']:.6e} (L={max_skr['L']} km)")
             print(f"최소 SKR: {min_skr['skr']:.6e} (L={min_skr['L']} km)")
         
-        # 결과를 배열로 반환
-        print("\n" + "=" * 60)
-        print("결과 배열 (코드에서 사용)")
-        print("=" * 60)
-        
-        L_values_str = ', '.join(map(str, [r['L'] for r in results]))
-        skr_values_str = ', '.join([f"{r['skr']:.6e}" if r['skr'] >= 0 else '0' for r in results])
-        
-        print(f"L = np.array([{L_values_str}])")
-        print(f"skr_modified = np.array([{skr_values_str}])")
-        
-    except FileNotFoundError:
-        print("\n오류: config/config.yaml 파일을 찾을 수 없습니다.")
     except Exception as e:
         print(f"\n오류 발생: {e}")
-

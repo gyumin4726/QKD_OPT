@@ -1,3 +1,21 @@
+"""
+MLP 모델 테스트 (독립 실행용)
+
+학습된 MLP 모델을 평가하고 예측 성능을 분석하는 스크립트입니다.
+FT-Transformer와는 별도로 유지되는 이전 버전 모델용입니다.
+
+주요 기능:
+    - 학습된 MLP 모델로 테스트 데이터 예측
+    - MSE, MAE, 퍼센트 오차 계산
+    - 파라미터별 예측 성능 분석
+    - SKR 오차 분포 통계
+    - 대표 샘플 상세 분석
+
+사용법:
+    1. 파일 상단의 L, EPOCHS, BATCH_SIZE 설정
+    2. python test_mlp.py 실행
+"""
+
 import os
 import numpy as np
 import pandas as pd
@@ -11,17 +29,27 @@ from train_mlp import (
     transform_target_outputs
 )
 
-# ============================================
-# ===== 여기서 테스트 설정을 변경하세요 =====
-# ============================================
-MODEL_PATH = "qkd_mlp_L100_E200_B128.pth"  # 평가할 모델 파일 경로
-TEST_CSV = "dataset/test_L100.csv"  # 테스트 데이터 CSV 파일 경로
-TEST_BATCH_SIZE = 256   # 테스트 배치 크기
-SHOW_DETAILED = True   # 상세 분석 출력 여부
-# ============================================
+# ============================================================
+# 테스트 설정
+# ============================================================
+
+# 모델 설정 (train_mlp.py와 동일하게 설정)
+L = 100                    # 거리 (km)
+EPOCHS = 200               # 학습 시 사용한 에포크 수
+BATCH_SIZE = 128           # 학습 시 사용한 배치 크기
+
+# 자동 설정되는 경로
+MODEL_PATH = f"qkd_mlp_L{L}_E{EPOCHS}_B{BATCH_SIZE}.pth"  # 모델 경로
+TEST_CSV = f"dataset/test_L{L}.csv"                        # 테스트 데이터 경로
+
+# 테스트 설정
+TEST_BATCH_SIZE = 256      # 테스트 배치 크기
+SHOW_DETAILED = True       # 상세 분석 출력 여부
+RANDOM_SEED = 42           # 랜덤 시드
+
+# ============================================================
 
 def build_test_loader(trainer, X_test, y_test, batch_size):
-    """테스트 데이터 로더 생성"""
     X_transformed = transform_input_features(X_test)
     X_scaled = trainer.feature_scaler.transform(X_transformed)
 
@@ -32,7 +60,6 @@ def build_test_loader(trainer, X_test, y_test, batch_size):
     return DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
 def compute_skr_percent_errors(actual_skr, predicted_skr):
-    """SKR 퍼센트 오차 계산"""
     mask = actual_skr != 0
     percent_errors = np.zeros_like(actual_skr)
     percent_errors[mask] = np.abs((actual_skr[mask] - predicted_skr[mask]) / actual_skr[mask]) * 100
@@ -40,7 +67,6 @@ def compute_skr_percent_errors(actual_skr, predicted_skr):
     return percent_errors
 
 def summarize_percent_errors(percent_errors):
-    """퍼센트 오차 통계 요약"""
     finite_errors = percent_errors[np.isfinite(percent_errors)]
     if finite_errors.size == 0:
         return {
@@ -64,7 +90,6 @@ def summarize_percent_errors(percent_errors):
     }
 
 def print_detailed_analysis(df, predictions, actuals, output_columns):
-    """상세 분석 출력"""
     skr_idx = output_columns.index('skr')
     skr_actual = actuals[:, skr_idx]
     skr_predicted = predictions[:, skr_idx]
@@ -74,7 +99,6 @@ def print_detailed_analysis(df, predictions, actuals, output_columns):
     print("SKR 오차 분포 및 대표 샘플 분석")
     print("=" * 60)
     
-    # SKR 오차 분포 통계
     print(f"SKR 오차 분포 통계:")
     print(f"  최소 오차: {np.min(skr_percent_errors):.2f}%")
     print(f"  1분위수(25%): {np.percentile(skr_percent_errors, 25):.2f}%")
@@ -87,10 +111,8 @@ def print_detailed_analysis(df, predictions, actuals, output_columns):
     print("SKR 오차 기준 대표 샘플 5개 - 실제값 vs 예측값")
     print("=" * 60)
     
-    # 오차 기준으로 정렬된 인덱스
     sorted_indices = np.argsort(skr_percent_errors)
     
-    # 5개 샘플 인덱스 선택: 최소, 25%, 중간, 75%, 최대
     sample_positions = [0, len(sorted_indices)//4, len(sorted_indices)//2, 
                        3*len(sorted_indices)//4, len(sorted_indices)-1]
     selected_indices = [sorted_indices[pos] for pos in sample_positions]
@@ -107,7 +129,6 @@ def print_detailed_analysis(df, predictions, actuals, output_columns):
             predicted = predictions[i, j]
             error = abs(actual - predicted)
             
-            # 퍼센트 오차 계산
             if actual != 0:
                 error_percent = (error / abs(actual)) * 100
             else:
@@ -118,7 +139,6 @@ def print_detailed_analysis(df, predictions, actuals, output_columns):
             else:
                 print(f"  {col:>6}: {actual:.6f} -> {predicted:.6f} ({error_percent:.1f}%)")
     
-    # 파라미터별 평균 오차 % 계산
     print("\n" + "=" * 60)
     print("전체 테스트 데이터셋 - 파라미터별 평균 오차 %")
     print("=" * 60)
@@ -128,23 +148,20 @@ def print_detailed_analysis(df, predictions, actuals, output_columns):
         actual_values = actuals[:, j]
         predicted_values = predictions[:, j]
         
-        # 퍼센트 오차 계산
         percent_errors = abs((actual_values - predicted_values) / actual_values) * 100
         avg_error_percent = np.mean(percent_errors)
         
         param_avg_errors[param_name] = avg_error_percent
         print(f"  {param_name:>6}: 평균 {avg_error_percent:.2f}%")
     
-    # 전체 평균 오차 % 계산
     overall_avg_error = np.mean(list(param_avg_errors.values()))
     print(f"\n전체 평균 오차 %: {overall_avg_error:.2f}%")
 
 def main():
-    # 설정값 사용
     model_path = MODEL_PATH
     test_csv = TEST_CSV
     batch_size = TEST_BATCH_SIZE
-    seed = 42  # 고정 시드
+    seed = RANDOM_SEED
     
     if not os.path.exists(test_csv):
         raise FileNotFoundError(f"테스트 데이터셋을 찾을 수 없습니다: {test_csv}")
@@ -152,14 +169,15 @@ def main():
         raise FileNotFoundError(f"모델 파일을 찾을 수 없습니다: {model_path}")
 
     print("=" * 90)
-    print(f"QKD MLP 모델 테스트")
+    print(f"QKD MLP 모델 테스트 (L={L}km)")
     print(f"모델 파일: {model_path}")
     print(f"테스트 데이터: {test_csv}")
     print("=" * 90)
     
     set_seed(seed)
 
-    input_columns = ["eta_d", "Y_0", "e_d", "alpha", "zeta", "eps_sec", "eps_cor", "N"]
+    # 입력/출력 컬럼 정의 (Y_0, e_0, L은 고정값이므로 CSV에 없음)
+    input_columns = ["eta_d", "e_d", "alpha", "zeta", "eps_sec", "eps_cor", "N"]
     output_columns = ["mu", "nu", "vac", "p_mu", "p_nu", "p_vac", "p_X", "q_X", "skr"]
 
     df = pd.read_csv(test_csv)
@@ -183,7 +201,7 @@ def main():
 
     print(f"\n테스트 MSE (전체): {overall_mse:.6e}")
     print("\n파라미터별 테스트 오차:")
-    print(f"{'Parameter':<12} {'MSE':<15} {'MAE':<15}")
+    print(f"{'파라미터':<12} {'MSE':<15} {'MAE':<15}")
     print("-" * 42)
     for param, stats in param_errors.items():
         print(f"{param:<12} {stats['mse']:<15.6e} {stats['mae']:<15.6e}")
@@ -202,7 +220,6 @@ def main():
     )
     print(f"  평균: {skr_summary['mean']:.2f}% | 표준편차: {skr_summary['std']:.2f}%")
 
-    # 상세 분석 (옵션)
     if SHOW_DETAILED:
         print_detailed_analysis(df, predictions, actuals, output_columns)
 

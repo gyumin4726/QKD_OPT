@@ -1,79 +1,55 @@
+"""
+QKD SKR 시뮬레이터
+
+QKD(Quantum Key Distribution) 파라미터로부터 SKR(Secure Key Rate)을 계산하는 
+핵심 시뮬레이터 모듈입니다.
+
+주요 함수:
+    - skr_simulator: SKR 계산 (GA 적합도 함수로 사용)
+    - normalize_p: 확률 벡터 정규화
+    - h: 이진 엔트로피 함수
+
+에러 코드:
+    -1: NaN 또는 Inf
+    -2: length > N 또는 length < 0
+    -3: phi_1_Z_U 범위 초과
+    -4: n < 0 또는 k < 0
+    -5 ~ -9: 중간 계산 음수 값
+    -10: mu <= nu 제약 위반
+    -11: nu <= vac 제약 위반
+    -12: p_mu, p_nu, p_vac 순서 제약 위반
+"""
+
 import numpy as np
-import yaml
 from dataclasses import dataclass
-from typing import Optional
 
 @dataclass
 class QKDSimulatorConfig:
-    """QKD 시뮬레이터 설정 클래스"""
-    # Detection parameters
     eta_d: float
     Y_0: float
     e_d: float
-    
-    # Fiber parameters
     alpha: float
-    
-    # Error correction parameters
     zeta: float
     e_0: float
-    
-    # Security parameters
     eps_sec: float
     eps_cor: float
-    
-    # System parameters
     N: float
     Lambda: float
-    L: float = 110  # 기본값 설정
+    L: float = 110
     
     def __post_init__(self):
-        """파생 상수 계산 (더 이상 필요 없음)"""
         pass
 
-    @classmethod
-    def from_yaml(cls, config_path: str = 'config/config.yaml') -> 'QKDSimulatorConfig':
-        """YAML 파일에서 설정을 로드하는 클래스 메서드"""
-        with open(config_path, 'r', encoding='utf-8') as file:
-            config = yaml.safe_load(file)
-        
-        return cls(
-            eta_d=float(config['detection']['eta_d']),
-            Y_0=float(config['detection']['Y_0']),
-            e_d=float(config['detection']['e_d']),
-            alpha=float(config['fiber']['alpha']),
-            zeta=float(config['error_correction']['zeta']),
-            e_0=float(config['error_correction']['e_0']),
-            eps_sec=float(config['security']['eps_sec']),
-            eps_cor=float(config['security']['eps_cor']),
-            N=float(config['system']['N']),
-            Lambda=config['system']['Lambda'],
-            L=110  # 기본값
-        )
-
-# 전역 변수 제거됨 - 이제 QKDSimulatorConfig 클래스 사용
-
 def normalize_p(vec):
-    """벡터를 정규화하는 함수"""
     copy_vec = vec[:].copy()
     sum_vec = np.sum(copy_vec[3:6])
     copy_vec[3:6] /= sum_vec
     return copy_vec
 
 def h(x):
-    """이진 엔트로피 함수"""
     return -x * np.log2(x) - (1 - x)*np.log2(1 - x)
 
 def skr_simulator(_, solution, __, config=None, **kwargs):
-    """SKR(Secret Key Rate) 계산 함수
-    
-    Args:
-        _: 첫 번째 매개변수 (사용되지 않음)
-        solution: 최적화할 파라미터 벡터
-        __: 세 번째 매개변수 (사용되지 않음)
-        config: QKDSimulatorConfig 객체 (선택사항)
-        **kwargs: 개별 파라미터들 (L, eta_d, Y_0, e_d, alpha, zeta, e_0, eps_sec, eps_cor, N, Lambda)
-    """
     sol = normalize_p(solution)
     mu, nu, vac, p_mu, p_nu, p_vac, p_X, q_X = sol
 
@@ -84,12 +60,11 @@ def skr_simulator(_, solution, __, config=None, **kwargs):
         return -10
     
     if nu <= vac:
-        return -11  # nu > vac 제약 위반
+        return -11
     
     if p_mu <= p_nu or p_nu <= p_vac:
-        return -12  # p_mu > p_nu > p_vac 제약 위반
+        return -12
 
-    # config가 제공되면 config에서 값 추출, 아니면 kwargs에서 추출
     if config is not None:
         eta_d = config.eta_d
         alpha = config.alpha
@@ -103,11 +78,9 @@ def skr_simulator(_, solution, __, config=None, **kwargs):
         eps_cor = config.eps_cor
         Lambda = config.Lambda
         
-        # 파생 상수 계산
         eps = eps_sec / 23
         beta = np.log(1 / eps)
     else:
-        # kwargs에서 개별 파라미터 추출
         eta_d = kwargs.get('eta_d')
         alpha = kwargs.get('alpha')
         L = kwargs.get('L')
@@ -120,7 +93,6 @@ def skr_simulator(_, solution, __, config=None, **kwargs):
         eps_cor = kwargs.get('eps_cor')
         Lambda = kwargs.get('Lambda')
         
-        # 파생 상수 계산
         eps = eps_sec / 23
         beta = np.log(1 / eps)
 

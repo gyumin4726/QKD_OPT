@@ -1,3 +1,25 @@
+"""
+QKD 학습 데이터셋 생성기 (파이프라인 1단계)
+
+GA(유전 알고리즘)를 사용하여 다양한 입력 조건에서 최적 QKD 파라미터를 찾고,
+이를 학습 데이터셋으로 저장하는 스크립트입니다.
+
+파이프라인:
+    1. data_generator.py     → raw_dataset_L{L}.csv 생성
+    2. clean_dataset.py      → cleaned_dataset_L{L}.csv 생성
+    3. data_split.py         → train_L{L}.csv, test_L{L}.csv 생성
+    4. train_fttransformer.py → 모델 학습
+
+주요 기능:
+    - 입력 파라미터 조합 생성 (random/grid 샘플링)
+    - GA로 각 조합에 대한 최적 파라미터 탐색
+    - 학습용 CSV 데이터셋 생성 및 저장
+
+사용법:
+    1. 파일 상단의 DEFAULT_L 값 설정 (다른 파일들과 동일하게)
+    2. python data_generator.py 실행
+"""
+
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -6,48 +28,88 @@ import os
 from ga_final import define_ga
 from simulator import skr_simulator
 
+# ============================================================
+# 데이터셋 생성 설정
+# ============================================================
+
+# 기본 거리 설정
+DEFAULT_L = 100                         # 기본 거리 (km)
+
+# 데이터셋 생성 설정
+DEFAULT_N_SAMPLES = 1                   # 생성할 샘플 수
+DEFAULT_MAX_GENERATIONS = 100           # GA 최대 세대 수
+SAMPLING_METHOD = 'random'              # 샘플링 방법: 'random' 또는 'grid'
+RANDOM_SEED = 42                        # 재현성을 위한 랜덤 시드
+
+# 출력 파일 설정
+OUTPUT_DIR = 'dataset'                              # 출력 디렉토리
+OUTPUT_FILENAME = f'raw_dataset_L{DEFAULT_L}.csv'   # 출력 파일명 (자동 설정)
+
+# ============================================================
+# 파라미터 범위 설정
+# ============================================================
+
+# 최적화할 파라미터 범위 (입력 변수)
+PARAM_RANGES = {
+    'eta_d': (0.02, 0.08),              # 탐지기 효율 (2-8%, 기본값 4.5%)
+    'e_d': (0.02, 0.05),                # 오정렬률 (2-5%, 기본값 3.3%)
+    'alpha': (0.18, 0.24),              # 광섬유 감쇠 계수 (기본값 0.21)
+    'zeta': (1.1, 1.4),                 # 오류 정정 효율 (기본값 1.22)
+    'eps_sec': (1e-12, 1e-8),           # 보안 파라미터 (기본값 1e-10)
+    'eps_cor': (1e-18, 1e-12),          # 정확성 파라미터 (기본값 1e-15)
+    'N': (1e9, 1e11)                    # 광 펄스 수 (기본값 1e10)
+}
+
+# 고정 파라미터
+FIXED_PARAMS = {
+    'e_0': 0.5,                         # 배경 오류율 고정값
+    'Y_0': 0.0                          # 다크 카운트율 고정값
+}
+
+# ============================================================
+# GA 최적화 설정
+# ============================================================
+
+OPTIMIZE_VAC = True                     # vac 파라미터도 최적화할지 여부
+
+# GA 파라미터 (최적화된 설정)
+GA_CONFIG = {
+    'co_type': 'scattered',             # 교차 방식
+    'mu_type': 'adaptive',              # 돌연변이 방식
+    'sel_type': 'tournament',           # 선택 방식
+    'num_parents_mating': 41,           # 교배할 부모 수
+    'sol_per_pop': 188,                 # 인구 크기
+    'keep_parents': 40,                 # 유지할 부모 수
+    'keep_elitism': 8,                  # 엘리트 유지 수
+    'K_tournament': 25,                 # 토너먼트 크기
+    'crossover_probability': 0.549428712068568,
+    'mutation_probability': None,       # adaptive mutation 사용
+    'mutation_percent_genes': [0.7, 0.2],
+    'random_seed': 42
+}
+
+# ============================================================
+
 class QKDDataGenerator:
     def __init__(self, L=None):
-        """QKD 학습 데이터 생성기
-        
-        Args:
-            L: 고정할 거리 값 (km). 필수 파라미터입니다.
-        
-        Raises:
-            ValueError: L이 지정되지 않은 경우
-        """
         # L 값 검증 (필수 파라미터)
         if L is None:
-            raise ValueError("L 값은 필수입니다. L 파라미터를 지정해주세요 (예: L=10)")
+            L = DEFAULT_L
+            print(f"L 값이 지정되지 않아 기본값 L={L} km 사용")
         
         # L 값 설정
         self.fixed_L = L
         
-        # 기본 파라미터 범위 설정
-        # 배경 오류율(e_0)은 0.5로 고정, 다크 카운트율(Y_0)은 0으로 고정
-        self.param_ranges = {
-            'eta_d': (0.02, 0.08),           # 탐지기 효율 (2-8%, 기본값 4.5%)
-            'e_d': (0.02, 0.05),             # 오정렬률 (2-5%, 기본값 3.3%)
-            'alpha': (0.18, 0.24),           # 광섬유 감쇠 계수 (기본값 0.21)
-            'zeta': (1.1, 1.4),              # 오류 정정 효율 (기본값 1.22)
-            'eps_sec': (1e-12, 1e-8),        # 보안 파라미터 (기본값 1e-10)
-            'eps_cor': (1e-18, 1e-12),       # 정확성 파라미터 (기본값 1e-15)
-            'N': (1e9, 1e11)                 # 광 펄스 수 (기본값 1e10)
-        }
-        
-        # 고정 파라미터: e_0(배경 오류율)는 항상 0.5로 고정, Y_0(다크 카운트율)은 0으로 고정
-        self.fixed_params = {
-            'e_0': 0.5,                      # 배경 오류율 고정값
-            'Y_0': 0.0                       # 다크 카운트율 고정값 (0으로 설정)
-        }
+        # 상단 설정 변수 사용
+        self.param_ranges = PARAM_RANGES
+        self.fixed_params = FIXED_PARAMS
         
         print(f"L={self.fixed_L} km로 고정하여 데이터셋 생성")
     
-    def generate_input_combinations(self, n_samples=10000, method='random', random_seed=None):
-        """다양한 입력 파라미터 조합 생성"""
+    def generate_input_combinations(self, n_samples=DEFAULT_N_SAMPLES, method=SAMPLING_METHOD, random_seed=RANDOM_SEED):
         print(f"입력 파라미터 조합 {n_samples}개 생성 중...")
         
-        # 시드 설정 (None이면 랜덤, 숫자면 고정)
+        # 시드 설정
         if random_seed is not None:
             np.random.seed(random_seed)
         else:
@@ -118,18 +180,14 @@ class QKDDataGenerator:
         
         return combinations[:n_samples]  # 요청한 수만큼만 반환
     
-    def optimize_parameters(self, input_params, max_generations=100):
-        """주어진 입력 파라미터에 대해 GA로 최적 파라미터 찾기"""
+    def optimize_parameters(self, input_params, max_generations=DEFAULT_MAX_GENERATIONS):
         import random
-        random.seed(42) 
-        np.random.seed(42)
+        random.seed(GA_CONFIG['random_seed']) 
+        np.random.seed(GA_CONFIG['random_seed'])
         
-        # vac 최적화 모드 설정 (vac도 최적화하도록 True로 설정)
-        OPTIMIZE_VAC = True
-        
-        # ga_final.py의 전역 OPTIMIZE_VAC 변수도 설정 (define_ga 함수가 이를 참조함)
+        # ga_final.py의 전역 OPTIMIZE_VAC 변수 설정
         import ga_final
-        ga_final.OPTIMIZE_VAC = True
+        ga_final.OPTIMIZE_VAC = OPTIMIZE_VAC
         
         # PyGAD용 래퍼 함수 - 개별 파라미터를 직접 전달
         def skr_fitness_wrapper(ga_instance, solution, solution_idx):
@@ -138,27 +196,26 @@ class QKDDataGenerator:
                 return skr_simulator(ga_instance, solution, solution_idx, **input_params)
             else:
                 # vac=0 고정: 7개 유전자를 8개로 확장
-                # solution은 7개: mu, nu, p_mu, p_nu, p_vac, p_X, q_X
-                # vac=0을 인덱스 2에 삽입하여 8개로 만듦
                 full_solution = np.insert(solution, 2, 0.0)
                 return skr_simulator(ga_instance, full_solution, solution_idx, **input_params)
         
-        # 최적화된 GA 설정 (README.md에서 가져온 설정)
+        # 상단 GA_CONFIG 사용
         ga = define_ga(
-            co_type='scattered',
-            mu_type='adaptive',
-            sel_type='tournament',
+            co_type=GA_CONFIG['co_type'],
+            mu_type=GA_CONFIG['mu_type'],
+            sel_type=GA_CONFIG['sel_type'],
             gen=max_generations,
-            num_parents_mating=41,
-            sol_per_pop=188,
-            keep_parents=40,
-            keep_elitism=8,
-            K_tournament=25,
-            crossover_probability=0.549428712068568,
-            mutation_probability=None,  # adaptive mutation 사용
-            mutation_percent_genes=[0.7, 0.2],
-            random_seed=42,
-            fitness_func=skr_fitness_wrapper  # 래퍼 함수 사용
+            num_parents_mating=GA_CONFIG['num_parents_mating'],
+            sol_per_pop=GA_CONFIG['sol_per_pop'],
+            keep_parents=GA_CONFIG['keep_parents'],
+            keep_elitism=GA_CONFIG['keep_elitism'],
+            K_tournament=GA_CONFIG['K_tournament'],
+            crossover_probability=GA_CONFIG['crossover_probability'],
+            mutation_probability=GA_CONFIG['mutation_probability'],
+            mutation_percent_genes=GA_CONFIG['mutation_percent_genes'],
+            random_seed=GA_CONFIG['random_seed'],
+            fitness_func=skr_fitness_wrapper,
+            optimize_vac=OPTIMIZE_VAC  # data_generator의 OPTIMIZE_VAC 사용
         )
         
         # GA 실행
@@ -182,31 +239,21 @@ class QKDDataGenerator:
             'fitness': solution_fitness
         }
     
-    def generate_dataset(self, n_samples=1000, max_generations=50, save_path=None):
-        """전체 데이터셋 생성
+    def generate_dataset(self, n_samples=DEFAULT_N_SAMPLES, max_generations=DEFAULT_MAX_GENERATIONS, save_path=OUTPUT_FILENAME):
+        # 저장 경로 결정
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
         
-        Args:
-            n_samples: 생성할 샘플 수
-            max_generations: GA 최대 세대 수
-            save_path: 저장 경로 (None이면 L 값에 따라 자동 생성)
-        """
-        # 저장 경로가 지정되지 않았으면 L 값에 따라 자동 생성
         if save_path is None:
-            # dataset 폴더가 없으면 생성
-            dataset_dir = 'dataset'
-            os.makedirs(dataset_dir, exist_ok=True)
-            save_path = os.path.join(dataset_dir, f'qkd_L{self.fixed_L}_Y0_0.csv')
-        else:
-            # 지정된 경로도 dataset 폴더 안에 저장 (경로가 이미 지정된 경우는 그대로 사용)
-            if not os.path.isabs(save_path) and not save_path.startswith('dataset/'):
-                dataset_dir = 'dataset'
-                os.makedirs(dataset_dir, exist_ok=True)
-                save_path = os.path.join(dataset_dir, save_path)
+            raise ValueError("출력 파일명을 지정해주세요. 파일 상단의 OUTPUT_FILENAME을 설정하세요.")
+        
+        # 파일명이 지정되면 OUTPUT_DIR 안에 저장
+        if not os.path.isabs(save_path):
+            save_path = os.path.join(OUTPUT_DIR, save_path)
         
         print(f"QKD 데이터셋 생성 시작 (L={self.fixed_L} km 고정, 샘플 수: {n_samples})")
         
-        # 입력 조합 생성 (재현 가능성을 위해 시드를 42로 고정)
-        input_combinations = self.generate_input_combinations(n_samples, method='random', random_seed=42)
+        # 입력 조합 생성 (재현 가능성을 위해 시드 고정)
+        input_combinations = self.generate_input_combinations(n_samples, method=SAMPLING_METHOD, random_seed=RANDOM_SEED)
         
         # 각 조합에 대해 최적화 수행
         dataset = []
@@ -217,10 +264,9 @@ class QKDDataGenerator:
                 # 최적화 수행
                 result = self.optimize_parameters(input_params, max_generations)
                 
-                # 데이터 포인트 생성 (CSV용으로 평면화)
-                # L, e_0, Y_0은 고정값이므로 CSV에 저장하지 않음 (파일명에 L과 Y0_0이 포함되어 있음)
+                # 데이터 포인트 생성 (L, e_0, Y_0은 고정값이므로 파일명에 포함)
                 data_point = {
-                    # 입력 파라미터들 (L, e_0, Y_0 제외 - 고정값)
+                    # 입력 파라미터들 (L, e_0, Y_0 제외)
                     'eta_d': input_params['eta_d'],
                     'e_d': input_params['e_d'],
                     'alpha': input_params['alpha'],
@@ -264,7 +310,6 @@ class QKDDataGenerator:
         return dataset
     
     def load_dataset(self, path='qkd_dataset.csv'):
-        """저장된 데이터셋 로드"""
         if path.endswith('.csv'):
             return pd.read_csv(path)
         else:
@@ -272,7 +317,6 @@ class QKDDataGenerator:
                 return pickle.load(f)
     
     def analyze_dataset(self, dataset):
-        """데이터셋 분석"""
         print("=== 데이터셋 분석 ===")
         
         # DataFrame인지 리스트인지 확인
@@ -305,15 +349,15 @@ class QKDDataGenerator:
             print(f"SKR 중앙값: {np.median(skr_values):.2e}")
 
 if __name__ == "__main__":
-    # L 값을 지정하여 데이터 생성기 초기화 (L은 필수 파라미터)
-    generator = QKDDataGenerator(L=20)  # L 고정 (필요 시 다른 거리로 변경)
+    # 상단 설정으로 데이터 생성기 초기화
+    generator = QKDDataGenerator(L=DEFAULT_L)
     
-    # 작은 데이터셋으로 테스트
-    print("테스트 데이터셋 생성 중...")
+    # 데이터셋 생성 (상단 설정 사용)
+    print("데이터셋 생성 중...")
     test_dataset = generator.generate_dataset(
-        n_samples=100000,  # 테스트용으로 작은 수
-        max_generations=100,  # 빠른 테스트를 위해 세대 수 줄임
-        save_path=None  # None이면 자동으로 L 값이 파일명에 포함됨 (qkd_dataset_L10.csv)
+        n_samples=DEFAULT_N_SAMPLES,
+        max_generations=DEFAULT_MAX_GENERATIONS,
+        save_path=OUTPUT_FILENAME 
     )
     
     # 데이터셋 분석

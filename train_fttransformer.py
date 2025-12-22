@@ -1,3 +1,27 @@
+"""
+FT-Transformer 기반 QKD 파라미터 예측 모델 학습 (파이프라인 4단계)
+
+Feature Tokenizer + Transformer를 사용하여 QKD 환경 변수로부터
+최적 파라미터(mu, nu, vac, p_mu, p_nu, p_vac, p_X, q_X)와
+SKR(Secure Key Rate)을 동시에 예측하는 모델을 학습합니다.
+
+파이프라인:
+    1. data_generator.py     → raw_dataset_L{L}.csv 생성
+    2. clean_dataset.py      → cleaned_dataset_L{L}.csv 생성
+    3. data_split.py         → train_L{L}.csv, test_L{L}.csv 생성
+    4. train_fttransformer.py → 모델 학습  ⬅ 현재 파일
+
+주요 기능:
+    - FT-Transformer 아키텍처로 tabular 데이터 학습
+    - Early stopping 및 learning rate scheduler 지원
+    - 데이터 전처리 (로그 변환, 정규화)
+    - 모델 저장 및 평가
+
+사용법:
+    1. 파일 상단의 L 값 설정 (data_split.py와 동일하게)
+    2. python train_fttransformer.py 실행
+"""
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -12,120 +36,135 @@ import random
 import os
 warnings.filterwarnings('ignore')
 
-# ============================================
-# ======= 여기서 학습 설정을 변경하세요 =======
-# ============================================
+# ============================================================
+# 훈련 설정
+# ============================================================
+
+# 거리 설정
+L = 100                            # 거리 (km)
+
+# 훈련 하이퍼파라미터
+EPOCHS = 500                       # 훈련 에포크 수
+BATCH_SIZE = 64                    # 배치 크기
+
+# 데이터 경로 설정
+TRAIN_CSV = f"dataset/train_L{L}.csv"                             # 훈련 데이터 경로
+TEST_CSV = f"dataset/test_L{L}.csv"                               # 테스트 데이터 경로
+OUTPUT_MODEL = f"qkd_fttransformer_L{L}_E{EPOCHS}_B{BATCH_SIZE}.pth"  # 출력 모델 경로
+
+# 데이터 컬럼 정의 (Y_0, e_0, L은 고정값이므로 CSV에 없음)
+INPUT_COLUMNS = ['eta_d', 'e_d', 'alpha', 'zeta', 'eps_sec', 'eps_cor', 'N']
+OUTPUT_COLUMNS = ['mu', 'nu', 'vac', 'p_mu', 'p_nu', 'p_vac', 'p_X', 'q_X', 'skr']
+
+# 재현성 설정
+RANDOM_SEED = 42                   # 랜덤 시드
+
+# 옵티마이저 설정
+OPTIMIZER = 'Adam'                # 옵티마이저 종류: 'Adam', 'SGD', 'AdamW' 등
+LEARNING_RATE = 0.0005            # 학습률
+WEIGHT_DECAY = 5e-6               # 가중치 감쇠
+DROPOUT_RATE = 0.1                # 드롭아웃 비율
+LOSS_SCALING = 1                  # 손실 스케일링
+
+# Learning rate scheduler
+SCHEDULER_PATIENCE = 10           # LR 감소 전 대기 에포크
+SCHEDULER_FACTOR = 0.5            # LR 감소 비율
+
+# Early stopping
+EARLY_STOPPING = True             # Early stopping 사용 여부
+EARLY_STOPPING_PATIENCE = 30      # 조기 종료 대기 에포크
+EARLY_STOPPING_MIN_DELTA = 1e-6   # 개선 최소 임계값
+
+# FT-Transformer 아키텍처
+D_EMBED = 128                     # 임베딩 차원
+N_HEADS = 4                       # Attention head 수
+N_LAYERS = 4                      # Transformer layer 수
+DIM_FEEDFORWARD = 256             # Feedforward 차원
+
+# 디바이스 설정
+DEVICE = 'cuda'                   # 'cpu', 'cuda', 'auto'
+
+# ============================================================
+
+# 하위 호환성을 위한 TRAINING_CONFIG
 TRAINING_CONFIG = {
-    # 기본 설정
-    'L': 100,              # 거리 L (km)
-    'epochs': 500,         # 훈련 에포크 수
-    'batch_size': 64,      # 배치 크기
-    'device': 'cuda',      # 디바이스 선택: 'cpu', 'cuda', 'auto' (auto는 GPU 사용 가능하면 GPU, 없으면 CPU)
-    # 최적화 설정
-    'learning_rate': 0.0005,
-    'weight_decay': 5e-6,
-    'dropout_rate': 0.1,
-    'loss_scaling': 1,
-    # Learning rate scheduler 설정
-    'scheduler_patience': 10,      # LR scheduler patience (몇 에포크 동안 개선 없으면 LR 감소)
-    'scheduler_factor': 0.5,        # LR 감소 비율 (새 LR = 기존 LR * factor)
-    # Early stopping 설정
-    'early_stopping': True,    # Early stopping 사용 여부
-    'early_stopping_patience': 30,  # 몇 에포크 동안 개선 없으면 중단
-    'early_stopping_min_delta': 1e-6,  # 개선으로 간주할 최소 변화량
-    # FT-Transformer 전용 설정
-    'd_embed': 128,
-    'n_heads': 4,
-    'n_layers': 4,
-    'dim_feedforward': 256
+    'L': L,
+    'epochs': EPOCHS,
+    'batch_size': BATCH_SIZE,
+    'device': DEVICE,
+    'optimizer': OPTIMIZER,
+    'learning_rate': LEARNING_RATE,
+    'weight_decay': WEIGHT_DECAY,
+    'dropout_rate': DROPOUT_RATE,
+    'loss_scaling': LOSS_SCALING,
+    'scheduler_patience': SCHEDULER_PATIENCE,
+    'scheduler_factor': SCHEDULER_FACTOR,
+    'early_stopping': EARLY_STOPPING,
+    'early_stopping_patience': EARLY_STOPPING_PATIENCE,
+    'early_stopping_min_delta': EARLY_STOPPING_MIN_DELTA,
+    'd_embed': D_EMBED,
+    'n_heads': N_HEADS,
+    'n_layers': N_LAYERS,
+    'dim_feedforward': DIM_FEEDFORWARD
 }
-# ============================================
 
 def set_seed(seed=42):
-    """모든 랜덤성 소스에 대해 시드를 고정하여 재현 가능한 결과 보장"""
     print(f"시드 고정: {seed}")
     
-    # Python 내장 random 모듈
     random.seed(seed)
-    
-    # NumPy
     np.random.seed(seed)
-    
-    # PyTorch CPU
     torch.manual_seed(seed)
     
-    # PyTorch GPU (CUDA)
     if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)  # 멀티 GPU인 경우
+        torch.cuda.manual_seed_all(seed)
     
-    # cuDNN 결정적 모드 설정 (재현성 향상, 성능 약간 저하 가능)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    # 환경 변수로도 설정 (일부 라이브러리용)
     os.environ['PYTHONHASHSEED'] = str(seed)
 
 def transform_input_features(X):
     """
-    모델 입력 특성에 대해 학습 및 추론 단계에서 동일하게 적용할 변환.
-    - Y_0, eps_sec, eps_cor, N: log10 변환 (분포 형상 정규화)
-    - 나머지 변수(eta_d, e_d, alpha, zeta): 원본 유지
-    - 최종적으로 StandardScaler가 전체를 정규화하므로 ×100/×10 스케일링은 불필요
+    모델 입력 특성 변환: eps_sec, eps_cor, N은 로그 변환
+    INPUT_COLUMNS = ['eta_d', 'e_d', 'alpha', 'zeta', 'eps_sec', 'eps_cor', 'N']
     """
     X_transformed = np.array(X, dtype=np.float64, copy=True)
 
     if X_transformed.ndim == 1:
         X_transformed = X_transformed.reshape(1, -1)
 
-    # 1. eta_d: 원본 유지 (StandardScaler가 정규화)
-    # X_transformed[:, 0] = X_transformed[:, 0]  # eta_d
-
-    # 2. Y_0 (1e-7~1e-5): 로그 변환 필요 (10배 단위 변동)
-    X_transformed[:, 1] = np.log10(np.clip(X_transformed[:, 1], a_min=1e-20, a_max=None))  # Y_0
-
-    # 3. e_d: 원본 유지 (StandardScaler가 정규화)
-    # X_transformed[:, 2] = X_transformed[:, 2]  # e_d
-
-    # 4. alpha: 원본 유지 (StandardScaler가 정규화)
-    # X_transformed[:, 3] = X_transformed[:, 3]  # alpha
-
-    # 5. zeta: 원본 유지 (StandardScaler가 정규화)
-    # X_transformed[:, 4] = X_transformed[:, 4]  # zeta
-
-    # 6. eps_sec (1e-12~1e-8): 로그 변환 필요 (10배 단위 변동)
-    X_transformed[:, 5] = np.log10(np.clip(X_transformed[:, 5], a_min=1e-30, a_max=None))  # eps_sec
-
-    # 7. eps_cor (1e-18~1e-13): 로그 변환 필요 (10배 단위 변동)
-    X_transformed[:, 6] = np.log10(np.clip(X_transformed[:, 6], a_min=1e-30, a_max=None))  # eps_cor
-
-    # 8. N (1e9~1e11): 로그 변환 필요 (10배 단위 변동)
-    X_transformed[:, 7] = np.log10(np.clip(X_transformed[:, 7], a_min=1.0, a_max=None))  # N
+    # eps_sec (인덱스 4): log10 변환
+    X_transformed[:, 4] = np.log10(np.clip(X_transformed[:, 4], a_min=1e-30, a_max=None))
+    
+    # eps_cor (인덱스 5): log10 변환
+    X_transformed[:, 5] = np.log10(np.clip(X_transformed[:, 5], a_min=1e-30, a_max=None))
+    
+    # N (인덱스 6): log10 변환
+    X_transformed[:, 6] = np.log10(np.clip(X_transformed[:, 6], a_min=1.0, a_max=None))
 
     return X_transformed
 
 def transform_target_outputs(y):
     """
-    모델 출력(SKR 포함)에 대해 학습 및 추론 단계에서 동일하게 적용할 변환.
-    - p_mu, p_nu, p_vac: 비율(ratio)로 변환 (합=1)
-    - SKR: log10 변환 (0 혹은 음수 방지를 위해 최소값 고정)
+    모델 출력 변환: p_mu, p_nu, p_vac를 비율로 변환, SKR은 로그 변환
     """
     y_transformed = np.array(y, dtype=np.float64, copy=True)
 
     if y_transformed.ndim == 1:
         y_transformed = y_transformed.reshape(1, -1)
 
-    # p_mu, p_nu, p_vac를 비율로 변환 (인덱스 3, 4, 5)
+    # p_mu, p_nu, p_vac를 비율로 변환
     p_mu = y_transformed[:, 3]
     p_nu = y_transformed[:, 4]
     p_vac = y_transformed[:, 5]
     sum_p = p_mu + p_nu + p_vac
     
-    y_transformed[:, 3] = p_mu / sum_p   # r_mu
-    y_transformed[:, 4] = p_nu / sum_p    # r_nu
-    y_transformed[:, 5] = p_vac / sum_p   # r_vac
+    y_transformed[:, 3] = p_mu / sum_p
+    y_transformed[:, 4] = p_nu / sum_p
+    y_transformed[:, 5] = p_vac / sum_p
 
-    # 9번째 컬럼(SKR)에 로그 변환 적용
+    # SKR 로그 변환
     y_transformed[:, -1] = np.log10(np.clip(y_transformed[:, -1], a_min=1e-30, a_max=None))
 
     return y_transformed
@@ -279,12 +318,29 @@ class FTTransformerTrainer:
         print(f"  - Transformer layers: {config['n_layers']}")
         print(f"  - 출력: 9개 (8 params + SKR)")
         
-        # 옵티마이저 및 손실 함수
-        self.optimizer = optim.Adam(
-            self.model.parameters(), 
-            lr=config['learning_rate'], 
-            weight_decay=config['weight_decay']
-        )
+        # 옵티마이저 설정
+        optimizer_name = config.get('optimizer', 'Adam')
+        if optimizer_name == 'Adam':
+            self.optimizer = optim.Adam(
+                self.model.parameters(), 
+                lr=config['learning_rate'], 
+                weight_decay=config['weight_decay']
+            )
+        elif optimizer_name == 'SGD':
+            self.optimizer = optim.SGD(
+                self.model.parameters(), 
+                lr=config['learning_rate'], 
+                weight_decay=config['weight_decay'],
+                momentum=0.9
+            )
+        elif optimizer_name == 'AdamW':
+            self.optimizer = optim.AdamW(
+                self.model.parameters(), 
+                lr=config['learning_rate'], 
+                weight_decay=config['weight_decay']
+            )
+        else:
+            raise ValueError(f"지원하지 않는 옵티마이저: {optimizer_name}")
         # Learning rate scheduler 추가
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer, 
@@ -649,56 +705,35 @@ class FTTransformerTrainer:
         print(f"모델이 {path}에서 로드되었습니다.")
     
 def main():
-    """메인 실행 함수"""
-    # 설정값 사용
-    L = TRAINING_CONFIG['L']
-    seed = 42  # 고정 시드
-    
-    # 경로 설정 (L 값 기반)
-    train_csv = f"dataset/train_L{L}.csv"
-    test_csv = f"dataset/test_L{L}.csv"
-    epochs = TRAINING_CONFIG['epochs']
-    batch_size = TRAINING_CONFIG['batch_size']
-    output_path = f"qkd_fttransformer_L{L}_E{epochs}_B{batch_size}.pth"
-    
     print("=" * 80)
     print(f"QKD FT-Transformer 신경망 훈련 (L={L} km)")
     print("Feature Tokenizer + Transformer for Tabular Data")
     print("=" * 80)
     
-    # 설정 사용
     config = TRAINING_CONFIG.copy()
     
-    # 재현 가능한 결과를 위한 시드 고정
-    set_seed(seed)
+    set_seed(RANDOM_SEED)
     
-    # 훈련기 초기화
     trainer = FTTransformerTrainer(config=config)
     
-    input_columns = ['eta_d', 'Y_0', 'e_d', 'alpha', 'zeta', 'eps_sec', 'eps_cor', 'N']
-    output_columns = ['mu', 'nu', 'vac', 'p_mu', 'p_nu', 'p_vac', 'p_X', 'q_X', 'skr']
+    if not os.path.exists(TRAIN_CSV):
+        raise FileNotFoundError(f"훈련 데이터 CSV를 찾을 수 없습니다: {TRAIN_CSV}")
+    if not os.path.exists(TEST_CSV):
+        raise FileNotFoundError(f"테스트 데이터 CSV를 찾을 수 없습니다: {TEST_CSV}")
     
-    # 훈련 데이터 로드
-    if not os.path.exists(train_csv):
-        raise FileNotFoundError(f"훈련 데이터 CSV를 찾을 수 없습니다: {train_csv}")
-    if not os.path.exists(test_csv):
-        raise FileNotFoundError(f"테스트 데이터 CSV를 찾을 수 없습니다: {test_csv}")
+    train_df = pd.read_csv(TRAIN_CSV)
+    test_df = pd.read_csv(TEST_CSV)
     
-    train_df = pd.read_csv(train_csv)
-    test_df = pd.read_csv(test_csv)
+    print(f"훈련 데이터 로드: {TRAIN_CSV} ({len(train_df)} 샘플)")
+    print(f"테스트 데이터 로드: {TEST_CSV} ({len(test_df)} 샘플)")
     
-    print(f"훈련 데이터 로드: {train_csv} ({len(train_df)} 샘플)")
-    print(f"테스트 데이터 로드: {test_csv} ({len(test_df)} 샘플)")
+    X_train = train_df[INPUT_COLUMNS].to_numpy()
+    y_train = train_df[OUTPUT_COLUMNS].to_numpy()
     
-    X_train = train_df[input_columns].to_numpy()
-    y_train = train_df[output_columns].to_numpy()
-    
-    # 데이터 전처리
     X_train_scaled, y_train_scaled = trainer.preprocess_data(X_train, y_train)
     
-    # 테스트 데이터도 전처리 (훈련 중 평가를 위해)
-    X_test = test_df[input_columns].to_numpy()
-    y_test = test_df[output_columns].to_numpy()
+    X_test = test_df[INPUT_COLUMNS].to_numpy()
+    y_test = test_df[OUTPUT_COLUMNS].to_numpy()
     
     X_test_transformed = transform_input_features(X_test)
     X_test_scaled = trainer.feature_scaler.transform(X_test_transformed)
@@ -729,10 +764,10 @@ def main():
         print(f"  - {param:>4s}: MSE={stats['mse']:.6e}, MAE={stats['mae']:.6e}")
     
     # 모델 저장
-    trainer.save_model(output_path)
+    trainer.save_model(OUTPUT_MODEL)
     
     print("\n" + "=" * 80)
-    print(f"훈련 완료! 모델이 {output_path}에 저장되었습니다.")
+    print(f"훈련 완료! 모델이 {OUTPUT_MODEL}에 저장되었습니다.")
     print("=" * 80)
 
 if __name__ == "__main__":
