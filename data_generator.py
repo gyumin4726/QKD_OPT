@@ -15,9 +15,16 @@ GA(유전 알고리즘)를 사용하여 다양한 입력 조건에서 최적 QKD
     - GA로 각 조합에 대한 최적 파라미터 탐색
     - 학습용 CSV 데이터셋 생성 및 저장
 
+설정:
+    - DEFAULT_L: 거리 (km)
+    - INCLUDE_Y_0: Y_0를 변수로 사용할지 여부 (False: 0.0 고정)
+    - DEFAULT_N_SAMPLES: 생성할 샘플 수
+    - SAMPLING_METHOD: 샘플링 방법 ('random' 또는 'grid')
+
 사용법:
     1. 파일 상단의 DEFAULT_L 값 설정 (다른 파일들과 동일하게)
-    2. python data_generator.py 실행
+    2. INCLUDE_Y_0 플래그 설정 (train 파일과 동일하게)
+    3. python data_generator.py 실행
 """
 
 import numpy as np
@@ -40,6 +47,7 @@ DEFAULT_N_SAMPLES = 1                   # 생성할 샘플 수
 DEFAULT_MAX_GENERATIONS = 100           # GA 최대 세대 수
 SAMPLING_METHOD = 'random'              # 샘플링 방법: 'random' 또는 'grid'
 RANDOM_SEED = 42                        # 재현성을 위한 랜덤 시드
+INCLUDE_Y_0 = False                     # Y_0를 변수로 사용할지 여부 (False: 고정값 0.0 사용)
 
 # 출력 파일 설정
 OUTPUT_DIR = 'dataset'                              # 출력 디렉토리
@@ -50,21 +58,35 @@ OUTPUT_FILENAME = f'raw_dataset_L{DEFAULT_L}.csv'   # 출력 파일명 (자동 �
 # ============================================================
 
 # 최적화할 파라미터 범위 (입력 변수)
-PARAM_RANGES = {
-    'eta_d': (0.02, 0.08),              # 탐지기 효율 (2-8%, 기본값 4.5%)
-    'e_d': (0.02, 0.05),                # 오정렬률 (2-5%, 기본값 3.3%)
-    'alpha': (0.18, 0.24),              # 광섬유 감쇠 계수 (기본값 0.21)
-    'zeta': (1.1, 1.4),                 # 오류 정정 효율 (기본값 1.22)
-    'eps_sec': (1e-12, 1e-8),           # 보안 파라미터 (기본값 1e-10)
-    'eps_cor': (1e-18, 1e-12),          # 정확성 파라미터 (기본값 1e-15)
-    'N': (1e9, 1e11)                    # 광 펄스 수 (기본값 1e10)
-}
-
-# 고정 파라미터
-FIXED_PARAMS = {
-    'e_0': 0.5,                         # 배경 오류율 고정값
-    'Y_0': 0.0                          # 다크 카운트율 고정값
-}
+# Y_0 포함 여부는 INCLUDE_Y_0 플래그로 결정
+if INCLUDE_Y_0:
+    PARAM_RANGES = {
+        'eta_d': (0.02, 0.08),              # 탐지기 효율 (2-8%, 기본값 4.5%)
+        'Y_0': (0.0, 1e-6),                 # 다크 카운트율 (0 ~ 1e-6)
+        'e_d': (0.02, 0.05),                # 오정렬률 (2-5%, 기본값 3.3%)
+        'alpha': (0.18, 0.24),              # 광섬유 감쇠 계수 (기본값 0.21)
+        'zeta': (1.1, 1.4),                 # 오류 정정 효율 (기본값 1.22)
+        'eps_sec': (1e-12, 1e-8),           # 보안 파라미터 (기본값 1e-10)
+        'eps_cor': (1e-18, 1e-12),          # 정확성 파라미터 (기본값 1e-15)
+        'N': (1e9, 1e11)                    # 광 펄스 수 (기본값 1e10)
+    }
+    FIXED_PARAMS = {
+        'e_0': 0.5                          # 배경 오류율 고정값
+    }
+else:
+    PARAM_RANGES = {
+        'eta_d': (0.02, 0.08),              # 탐지기 효율 (2-8%, 기본값 4.5%)
+        'e_d': (0.02, 0.05),                # 오정렬률 (2-5%, 기본값 3.3%)
+        'alpha': (0.18, 0.24),              # 광섬유 감쇠 계수 (기본값 0.21)
+        'zeta': (1.1, 1.4),                 # 오류 정정 효율 (기본값 1.22)
+        'eps_sec': (1e-12, 1e-8),           # 보안 파라미터 (기본값 1e-10)
+        'eps_cor': (1e-18, 1e-12),          # 정확성 파라미터 (기본값 1e-15)
+        'N': (1e9, 1e11)                    # 광 펄스 수 (기본값 1e10)
+    }
+    FIXED_PARAMS = {
+        'e_0': 0.5,                         # 배경 오류율 고정값
+        'Y_0': 0.0                          # 다크 카운트율 고정값
+    }
 
 # ============================================================
 # GA 최적화 설정
@@ -105,6 +127,7 @@ class QKDDataGenerator:
         self.fixed_params = FIXED_PARAMS
         
         print(f"L={self.fixed_L} km로 고정하여 데이터셋 생성")
+        print(f"Y_0 모드: {'변수 (범위 0 ~ 1e-6)' if INCLUDE_Y_0 else '고정값 (0.0)'}")
     
     def generate_input_combinations(self, n_samples=DEFAULT_N_SAMPLES, method=SAMPLING_METHOD, random_seed=RANDOM_SEED):
         print(f"입력 파라미터 조합 {n_samples}개 생성 중...")
@@ -131,10 +154,10 @@ class QKDDataGenerator:
                 
                 # 변수 파라미터 샘플링
                 for param, (min_val, max_val) in self.param_ranges.items():
-                    if param in ['eps_sec', 'eps_cor', 'N']:
-                        # 로그 스케일로 샘플링
+                    if param in ['eps_sec', 'eps_cor', 'N', 'Y_0']:
+                        # 로그 스케일로 샘플링 (Y_0 포함)
                         combo[param] = 10 ** np.random.uniform(
-                            np.log10(min_val), np.log10(max_val)
+                            np.log10(max(min_val, 1e-20)), np.log10(max_val)
                         )
                     else:
                         combo[param] = np.random.uniform(min_val, max_val)
@@ -149,34 +172,47 @@ class QKDDataGenerator:
             # L은 고정값 사용
             L = self.fixed_L
             
+            # e_0는 항상 고정
+            e_0 = self.fixed_params['e_0']
+            
+            # Y_0가 변수인지 고정값인지에 따라 다르게 처리
+            if 'Y_0' in self.param_ranges:
+                # Y_0가 변수인 경우
+                Y_0_range = np.logspace(
+                    np.log10(max(self.param_ranges['Y_0'][0], 1e-20)),
+                    np.log10(self.param_ranges['Y_0'][1]),
+                    n_per_param
+                )
+            else:
+                # Y_0가 고정값인 경우
+                Y_0_range = [self.fixed_params['Y_0']]
+            
             for eta_d in np.linspace(*self.param_ranges['eta_d'], n_per_param):
-                for e_d in np.linspace(*self.param_ranges['e_d'], n_per_param):
-                    for alpha in np.linspace(*self.param_ranges['alpha'], n_per_param):
-                        for zeta in np.linspace(*self.param_ranges['zeta'], n_per_param):
-                            # e_0와 Y_0는 고정값 사용
-                            e_0 = self.fixed_params['e_0']
-                            Y_0 = self.fixed_params['Y_0']
-                            for eps_sec in np.logspace(
-                                    np.log10(self.param_ranges['eps_sec'][0]),
-                                    np.log10(self.param_ranges['eps_sec'][1]),
-                                    n_per_param
-                                ):
-                                    for eps_cor in np.logspace(
-                                        np.log10(self.param_ranges['eps_cor'][0]),
-                                        np.log10(self.param_ranges['eps_cor'][1]),
+                for Y_0 in Y_0_range:
+                    for e_d in np.linspace(*self.param_ranges['e_d'], n_per_param):
+                        for alpha in np.linspace(*self.param_ranges['alpha'], n_per_param):
+                            for zeta in np.linspace(*self.param_ranges['zeta'], n_per_param):
+                                for eps_sec in np.logspace(
+                                        np.log10(self.param_ranges['eps_sec'][0]),
+                                        np.log10(self.param_ranges['eps_sec'][1]),
                                         n_per_param
                                     ):
-                                        for N in np.logspace(
-                                            np.log10(self.param_ranges['N'][0]),
-                                            np.log10(self.param_ranges['N'][1]),
+                                        for eps_cor in np.logspace(
+                                            np.log10(self.param_ranges['eps_cor'][0]),
+                                            np.log10(self.param_ranges['eps_cor'][1]),
                                             n_per_param
                                         ):
-                                            combinations.append({
-                                                'L': L, 'eta_d': eta_d, 'Y_0': Y_0,
-                                                'e_d': e_d, 'alpha': alpha, 'zeta': zeta,
-                                                'e_0': e_0, 'eps_sec': eps_sec,
-                                                'eps_cor': eps_cor, 'N': N
-                                            })
+                                            for N in np.logspace(
+                                                np.log10(self.param_ranges['N'][0]),
+                                                np.log10(self.param_ranges['N'][1]),
+                                                n_per_param
+                                            ):
+                                                combinations.append({
+                                                    'L': L, 'eta_d': eta_d, 'Y_0': Y_0,
+                                                    'e_d': e_d, 'alpha': alpha, 'zeta': zeta,
+                                                    'e_0': e_0, 'eps_sec': eps_sec,
+                                                    'eps_cor': eps_cor, 'N': N
+                                                })
         
         return combinations[:n_samples]  # 요청한 수만큼만 반환
     
@@ -264,10 +300,19 @@ class QKDDataGenerator:
                 # 최적화 수행
                 result = self.optimize_parameters(input_params, max_generations)
                 
-                # 데이터 포인트 생성 (L, e_0, Y_0은 고정값이므로 파일명에 포함)
+                # 데이터 포인트 생성
+                # INCLUDE_Y_0 플래그에 따라 Y_0 포함 여부 결정
                 data_point = {
-                    # 입력 파라미터들 (L, e_0, Y_0 제외)
+                    # 입력 파라미터들 (L, e_0 제외, Y_0는 플래그에 따라)
                     'eta_d': input_params['eta_d'],
+                }
+                
+                # Y_0가 변수인 경우 데이터셋에 포함
+                if INCLUDE_Y_0:
+                    data_point['Y_0'] = input_params['Y_0']
+                
+                # 나머지 입력 파라미터
+                data_point.update({
                     'e_d': input_params['e_d'],
                     'alpha': input_params['alpha'],
                     'zeta': input_params['zeta'],
@@ -287,7 +332,7 @@ class QKDDataGenerator:
                     
                     # SKR (fitness 제거)
                     'skr': result['skr_value']
-                }
+                })
                 dataset.append(data_point)
                 
                 # 진행 상황 출력

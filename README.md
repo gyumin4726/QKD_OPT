@@ -36,6 +36,7 @@ QKD 환경 변수에 따른 최적 파라미터(mu, nu, vac, p_mu, p_nu, p_vac, 
 ```bash
 # data_generator.py 상단 설정
 DEFAULT_L = 100                  # 거리 (km)
+INCLUDE_Y_0 = False              # Y_0를 변수로 사용할지 여부
 OUTPUT_FILENAME = f'raw_dataset_L{DEFAULT_L}.csv'
 
 python data_generator.py
@@ -65,6 +66,7 @@ python data_split.py
 ```bash
 # train_fttransformer.py 상단 설정
 L = 100
+INCLUDE_Y_0 = False              # Y_0를 입력 변수로 포함할지 여부
 EPOCHS = 500
 BATCH_SIZE = 64
 
@@ -89,18 +91,22 @@ python test_fttransformer.py
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
 | `L` | 거리 (km) | 100 |
+| `INCLUDE_Y_0` | Y_0를 입력 변수로 사용 여부 | False (0.0 고정) |
 | `EPOCHS` | 훈련 에포크 | 500 (FT-Transformer), 200 (MLP) |
 | `BATCH_SIZE` | 배치 크기 | 64 (FT-Transformer), 128 (MLP) |
 | `DEVICE` | 학습 디바이스 | 'cuda' (GPU), 'cpu', 'auto' |
 | `OPTIMIZER` | 옵티마이저 | Adam |
 | `LEARNING_RATE` | 학습률 | 0.0005 (FT-Transformer), 0.001 (MLP) |
 
-**중요**: 파이프라인을 연결하기 위해서는 `L` 값을 모든 파일에서 동일하게 설정.
+**중요**: 
+- 파이프라인을 연결하기 위해서는 `L` 값을 모든 파일에서 동일하게 설정
+- `INCLUDE_Y_0` 플래그는 `data_generator.py`와 `train_*.py`에서 동일하게 설정
 
 ## 데이터 형식
 
-### 입력 변수 (7개)
+### 입력 변수
 - `eta_d` - 검출기 효율
+- `Y_0` - 다크 카운트율 (선택적, `INCLUDE_Y_0` 플래그로 제어)
 - `e_d` - 오정렬률
 - `alpha` - 광섬유 감쇠 계수
 - `zeta` - 오류 정정 효율
@@ -108,7 +114,8 @@ python test_fttransformer.py
 - `eps_cor` - 정확성 파라미터
 - `N` - 광 펄스 수
 
-**고정값**: `Y_0` (암계수율), `e_0` (배경 오류율), `L` (거리)
+**고정값**: `e_0` (배경 오류율), `L` (거리)  
+**선택적 변수**: `Y_0` (다크 카운트율, `INCLUDE_Y_0=False`일 때 0.0 고정)
 
 ### 출력 변수 (9개)
 - `mu`, `nu`, `vac` - 신호 강도
