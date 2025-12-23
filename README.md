@@ -91,6 +91,7 @@ python test_fttransformer.py
 | `L` | 거리 (km) | 100 |
 | `EPOCHS` | 훈련 에포크 | 500 (FT-Transformer), 200 (MLP) |
 | `BATCH_SIZE` | 배치 크기 | 64 (FT-Transformer), 128 (MLP) |
+| `DEVICE` | 학습 디바이스 | 'cuda' (GPU), 'cpu', 'auto' |
 | `OPTIMIZER` | 옵티마이저 | Adam |
 | `LEARNING_RATE` | 학습률 | 0.0005 (FT-Transformer), 0.001 (MLP) |
 
@@ -173,9 +174,17 @@ pip install -r requirements.txt
 
 ## 참고사항
 
+### 설정 관리
 - 모든 설정은 각 Python 파일 상단에서 직접 수정
 - 로그 변환: `eps_sec`, `eps_cor`, `N`, `skr`
 - 정규화: MinMaxScaler (입력/출력 모두)
+
+### 디바이스 선택
+- **GPU 사용**: `DEVICE = 'cuda'` - 학습 속도 향상
+- **CPU 사용**: `DEVICE = 'cpu'` - GPU 없는 환경에서 사용
+- **자동 선택**: `DEVICE = 'auto'` - GPU 사용 가능 시 자동으로 GPU 사용
+
+### 모델 선택
 - FT-Transformer 권장 (MLP 대비 성능 우수, 학습 시간 다소 증가)
 
 ## 참고문헌
